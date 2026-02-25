@@ -1,16 +1,16 @@
 #!/bin/bash
-api_key="l36mOH0G9EPEAEQocFuQYX2GD5ZbS1Au"
-api_token="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJuTTFidjdPczFzenhKWlFiVjdoRnpXVEdEOEFwM1dmMiIsImV4cCI6MTc3MjAzMDg1NH0.fLHftQQz7TVYEDaMaL5UrrTVELpvk-KvERvVQsFTlBI"
+api_key="Your_opensubs_key"
+api_token="Your_opensubs_token"
 search="$1"
 season_number="$2"
 result_number_sub="$3"
 result_number_dub="$4"
 episode_number="$5"
-dir="/home/donar/.anime"
-sub_language="es"
-ani_cli_dir="/home/donar/scripts"
+dir="/path/to/use"
+sub_language="language"
+ani_cli_dir="/path/ani_cli_sub"
 
-echo "Arguments: 1 = search, 2 = season_number, 3 = result_number_sub (check ani-cli), 4 = result_number_dub, 5 = episode_number"
+echo "Arguments: 1 = search, 2 = season_number, 3 = result_number_sub (check ani-cli), 4 = result_number_dub (check ani-cli), 5 = episode_number"
 
 main() {
  download_subtitles
