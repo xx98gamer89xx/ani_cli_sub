@@ -206,11 +206,12 @@ select_quality() {
 
 # gets embed urls, collects direct links into provider files, selects one with desired quality into $episode
 get_episode_url() {
+    # First argument id Second argument mode Third argument ep_no
     # get the embed urls of the selected episode
     #shellcheck disable=SC2016
     episode_embed_gql='query ($showId: String!, $translationType: VaildTranslationTypeEnumType!, $episodeString: String!) { episode( showId: $showId translationType: $translationType episodeString: $episodeString ) { episodeString sourceUrls }}'
 
-    resp=$(curl -e "$allanime_refr" -s -G "${allanime_api}/api" --data-urlencode "variables={\"showId\":\"$id\",\"translationType\":\"$mode\",\"episodeString\":\"$ep_no\"}" --data-urlencode "query=$episode_embed_gql" -A "$agent" | tr '{}' '\n' | sed 's|\\u002F|\/|g;s|\\||g' | sed -nE 's|.*sourceUrl":"--([^"]*)".*sourceName":"([^"]*)".*|\2 :\1|p')
+    resp=$(curl -e "$allanime_refr" -s -G "${allanime_api}/api" --data-urlencode "variables={\"showId\":\"$1\",\"translationType\":\"$2\",\"episodeString\":\"$3\"}" --data-urlencode "query=$episode_embed_gql" -A "$agent" | tr '{}' '\n' | sed 's|\\u002F|\/|g;s|\\||g' | sed -nE 's|.*sourceUrl":"--([^"]*)".*sourceName":"([^"]*)".*|\2 :\1|p')
     # generate links into sequential files
     cache_dir="$(mktemp -d)"
     providers="1 2 3 4"
@@ -227,6 +228,7 @@ get_episode_url() {
     else
         [ -z "$episode" ] && die "Episode not released!"
     fi
+    echo "$episode"
 }
 
 # search the query and give results
@@ -255,6 +257,7 @@ time_until_next_ep() {
 
 # get the episodes list of the selected anime
 episodes_list() {
+    #ShowId is the first argument
     #shellcheck disable=SC2016
     episodes_list_gql='query ($showId: String!) { show( _id: $showId ) { _id availableEpisodesDetail }}'
 
@@ -283,17 +286,18 @@ update_history() {
 }
 
 download() {
+    # First argument episode_url Second argument mode
     # download subtitle if it's set
     case $1 in
         *m3u8*)
             if command -v "yt-dlp" >/dev/null; then
-                if [ "$mode" == "dub" ]; then
+                if [ $2 == "dub" ]; then
                   yt-dlp --referer "$m3u8_refr" "$1" --no-skip-unavailable-fragments --fragment-retries infinite -N 16 -o "$download_dir/dub.mp4"
 		else
 		  yt-dlp --referer "$m3u8_refr" "$1" --no-skip-unavailable-fragments --fragment-retries infinite -N 16 -o "$download_dir/sub.mp4"
 		fi
             else
-                if [ "$mode" == "dub" ]; then
+                if [ $2 == "dub" ]; then
                  ffmpeg -extension_picky 0 -referer "$m3u8_refr" -loglevel error -stats -i "$1" -c copy "$download_dir/dub.mp4"
                 else
                  ffmpeg -extension_picky 0 -referer "$m3u8_refr" -loglevel error -stats -i "$1" -c copy "$download_dir/sub.mp4" 
@@ -304,7 +308,7 @@ download() {
             ;;
         *)
             # shellcheck disable=SC208
-            if [ "$mode" == "dub" ]; then
+            if [ $2 == "dub" ]; then
                  aria2c --referer="$allanime_refr" --enable-rpc=false --check-certificate=false --continue $iSH_DownFix --summary-interval=0 -x 16 -s 16 "$1" --dir="$download_dir" -o "dub.mp4" --download-result=hide       
                 else
                  aria2c --referer="$allanime_refr" --enable-rpc=false --check-certificate=false --continue $iSH_DownFix --summary-interval=0 -x 16 -s 16 "$1" --dir="$download_dir" -o "sub.mp4" --download-result=hide
