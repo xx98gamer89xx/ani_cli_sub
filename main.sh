@@ -2,7 +2,7 @@
 
 source ./ani_lib.sh
 source ./subs_embedder_lib.sh
-anime_path="/path/to/ani_cli_sub"
+anime_path="/Your/anime/path"
 
 avaliable_animes=()
 avaliable_codes=()
@@ -20,7 +20,9 @@ search() {
     line_finished=0
     maching_codes=0
     return_values=()
-
+    line_number_dub=0
+    line_number_sub=0
+ 
     while read -r line_dub; do
         line_number_dub=$(( ${line_number_dub} + 1))
         code_dub="${line_dub:0:17}"
@@ -30,8 +32,6 @@ search() {
             if [ ${code_sub} == ${code_dub} ]; then
                 avaliable_animes[maching_codes]="${line_dub}"
 	            avaliable_codes[maching_codes]="${code_sub}"
-                result_number_dub[maching_codes]="$lines_number_dub"
-                result_number_sub[maching_codes]="$lines_number_sub"
                 maching_codes=$(( ${maching_codes} + 1 ))
             fi
         done < "${anime_path}/sub.list"
@@ -49,6 +49,7 @@ select_anime() {
     done
     read anime_index
     episodes=$(episodes_list "${avaliable_codes[$(( anime_index - 1))]}" "dub")
+    echo "Select the episode you want to see:"
     echo "${episodes}"
     read episode_index
     sub_episode_url=$(get_episode_url "${avaliable_codes[anime_index - 1]}" "sub" "$episode_index")
@@ -60,7 +61,7 @@ select_anime() {
     echo "Print the season number you want to download: "
     read season_number
     echo "${search} ${season_number} ${episode_index} ${episode_index} ${episode_index} ${anime_path}"
-    main "${search}" "${season_number}" "${result_number_sub[anime_index]}" "${result_number_dub[anime_index]}" "${episode_index}" "${anime_path}"
+    main "${search}" "${season_number}" "${episode_index}" "${anime_path}"
     echo "Episode downloaded correctly on ${anime_path}"
 }
 select_anime

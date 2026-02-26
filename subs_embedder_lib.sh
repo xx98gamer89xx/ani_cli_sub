@@ -1,13 +1,12 @@
 #!/bin/bash
-api_key="opensubskey"
-api_token="opensubstoken"
-sub_language="language"
+api_key="Your opensubs api key"
+api_token="Your opensubs api token"
+sub_language="sub language"
 
 clean() {
- rm "${dir}"/new.mp4
- rm "${dir}"/*.srt
- rm "${dir}/dub.mp4"
  rm "${dir}/sub.mp4"
+ rm "${dir}/dub.mp4"
+ rm "${dir}/subs.srt"
 }
 
 convert_video() {
@@ -26,16 +25,25 @@ convert_video() {
 
 
 download_subtitles() {
-general_search="$(curl -L -G "https://api.opensubtitles.com/api/v1/subtitles" --data-urlencode "query=${search}" --data-urlencode "season_number=${season_number}" --data-urlencode "episode_number=${episode_number}" --data-urlencode "languages=${sub_language}"\
+general_search="$(curl -s -L -G "https://api.opensubtitles.com/api/v1/subtitles" --data-urlencode "query=${search}" --data-urlencode "season_number=${season_number}" --data-urlencode "episode_number=${episode_number}" --data-urlencode "languages=${sub_language}"\
                     -H "Api-Key: ${api_key}" \
                     -H "Authorization: Bearer ${api_token}"\
                     -H "User-Agent: ani-cli-subs/1.0")"
+test=$(echo "${general_search}" | jq '.total_pages')
+if [ "$test" -eq 0 ]; then
+echo "Couldn't find subs for this episode, type the global episode number (like it was all one season)"
+read global_episode_number
+general_search="$(curl -s -L -G "https://api.opensubtitles.com/api/v1/subtitles" --data-urlencode "query=${search}" --data-urlencode "season_number=${season_number}" --data-urlencode "episode_number=${episode_number_global}" --data-urlencode "languages=${sub_language}"\
+                    -H "Api-Key: ${api_key}" \
+                    -H "Authorization: Bearer ${api_token}"\
+                    -H "User-Agent: ani-cli-subs/1.0")"    
+fi
 subs_id=$(echo "$general_search" | jq '.data[0].attributes.files[0].file_id')
     echo "${general_search}"
     # Obtener la URL del subtítulo en .vtt desde OpenSubtitles
-    subtitle_url="$(curl --header "Content-Type: application/json" --request POST --data "{\"file_id\": ${subs_id}}" "https://api.opensubtitles.com/api/v1/download"\
-                    -H "Api-Key: l36mOH0G9EPEAEQocFuQYX2GD5ZbS1Au" \
-                    -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJuTTFidjdPczFzenhKWlFiVjdoRnpXVEdEOEFwM1dmMiIsImV4cCI6MTc3MjAzMDg1NH0.fLHftQQz7TVYEDaMaL5UrrTVELpvk-KvERvVQsFTlBI" \
+    subtitle_url="$(curl -s --header "Content-Type: application/json" --request POST --data "{\"file_id\": ${subs_id}}" "https://api.opensubtitles.com/api/v1/download"\
+                    -H "Api-Key: ${api_key}" \
+                    -H "Authorization: Bearer ${api_token}" \
                     -H "User-Agent: ani-cli-subs/1.0")"
 
     # Verificar que se obtuvo URL
@@ -55,10 +63,8 @@ subs_id=$(echo "$general_search" | jq '.data[0].attributes.files[0].file_id')
 main() {
  search="$1"
  season_number="$2"
- result_number_sub="$3"
- result_number_dub="$4"
- episode_number="$5"
- dir="$6"
+ episode_number="$3"
+ dir="$4"
  download_subtitles
  convert_video
  clean
