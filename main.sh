@@ -1,64 +1,68 @@
 #!/bin/bash
-api_key="Your_opensubs_key"
-api_token="Your_opensubs_token"
-search="$1"
-season_number="$2"
-result_number_sub="$3"
-result_number_dub="$4"
-episode_number="$5"
-dir="/path/to/use"
-sub_language="language"
-ani_cli_dir="/path/ani_cli_sub"
 
-echo "Arguments: 1 = search, 2 = season_number, 3 = result_number_sub (check ani-cli), 4 = result_number_dub (check ani-cli), 5 = episode_number"
+source ./ani_lib.sh
+source ./subs_embedder_lib.sh
+anime_path="/path/to/ani_cli_sub"
 
-main() {
- download_subtitles
- download_video
- clean
+avaliable_animes=()
+avaliable_codes=()
+result_number_sub=()
+result_number_dub=()
+
+search() {
+    search=$1
+
+    results_sub=$(search_anime "${search}" "sub")
+    echo "$results_sub" >> "${anime_path}/sub.list"
+    results_dub=$(search_anime "${search}" "dub")
+    echo "$results_dub" >> "${anime_path}/dub.list"
+
+    line_finished=0
+    maching_codes=0
+    return_values=()
+
+    while read -r line_dub; do
+        line_number_dub=$(( ${line_number_dub} + 1))
+        code_dub="${line_dub:0:17}"
+        while read -r line_sub; do
+            line_number_sub=$(( ${line_number_sub} + 1))
+            code_sub="${line_sub:0:17}"  
+            if [ ${code_sub} == ${code_dub} ]; then
+                avaliable_animes[maching_codes]="${line_dub}"
+	            avaliable_codes[maching_codes]="${code_sub}"
+                result_number_dub[maching_codes]="$lines_number_dub"
+                result_number_sub[maching_codes]="$lines_number_sub"
+                maching_codes=$(( ${maching_codes} + 1 ))
+            fi
+        done < "${anime_path}/sub.list"
+    done < "${anime_path}/dub.list"
 }
 
-clean() {
- rm "${dir}"/sub.mp4
- rm "${dir}"/dub.mp4
- rm "${dir}"/new.mp4
- rm "${dir}"/*.srt
+select_anime() {
+    clear
+    echo "Type what you want to search: "
+    read search
+    search "${search}"
+    echo "Select the anime you want to see: "
+    for (( i=0 ; i<${#avaliable_animes[*]} ; i++ )); do
+        echo "$(( i + 1 )). ${avaliable_animes["${i}"]}"
+    done
+    read anime_index
+    episodes=$(episodes_list "${avaliable_codes[$(( anime_index - 1))]}" "dub")
+    echo "${episodes}"
+    read episode_index
+    sub_episode_url=$(get_episode_url "${avaliable_codes[anime_index - 1]}" "sub" "$episode_index")
+    dub_episode_url=$(get_episode_url "${avaliable_codes[anime_index - 1]}" "dub" "$episode_index")
+    download "${sub_episode_url}" "sub" "${anime_path}" 
+    echo "Sub version downloaded"
+    download "${dub_episode_url}" "dub" "${anime_path}"
+    echo "Dub version downloaded"
+    echo "Print the season number you want to download: "
+    read season_number
+    echo "${search} ${season_number} ${episode_index} ${episode_index} ${episode_index} ${anime_path}"
+    main "${search}" "${season_number}" "${result_number_sub[anime_index]}" "${result_number_dub[anime_index]}" "${episode_index}" "${anime_path}"
+    echo "Episode downloaded correctly on ${anime_path}"
 }
-
-download_video() {
-    local output_name="${search}_Season=${season_number}_Episode=${episode_number}"
-    $ani_cli_dir/ani_cli_sub --dub -d "$search" -S $result_number_dub -e $episode_number
-    $ani_cli_dir/ani_cli_sub -d "$search" -S $result_number_sub -e $episode_number
-    ffmpeg -i "${dir}/dub.mp4" -i "${dir}/sub.mp4" -c copy -map 0:v:0 -map 1:a:0 "${dir}/new.mp4"
-    echo "${dir}/new.mp4"
-    ffmpeg -i "${dir}/new.mp4" -i "${dir}/subs.srt" -c copy -c:s mov_text "${dir}/${output_name}.mp4"
-}
-
-download_subtitles() {
-general_search="$(curl -L -G "https://api.opensubtitles.com/api/v1/subtitles" --data-urlencode "query=${search}" --data-urlencode "season_number=${season_number}" --data-urlencode "episode_number=${episode_number}" --data-urlencode "languages=${sub_language}"\
-                    -H "Api-Key: ${api_key}" \
-                    -H "Authorization: ${api_token}"\
-                    -H "User-Agent: ani-cli-subs/1.0")"
-subs_id=$(echo "$general_search" | jq '.data[0].attributes.files[0].file_id')
-    
-    # Obtener la URL del subtítulo en .vtt desde OpenSubtitles
-    subtitle_url="$(curl --header "Content-Type: application/json" --request POST --data "{\"file_id\": ${subs_id}}" "https://api.opensubtitles.com/api/v1/download"\
-                    -H "Api-Key: l36mOH0G9EPEAEQocFuQYX2GD5ZbS1Au" \
-                    -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJuTTFidjdPczFzenhKWlFiVjdoRnpXVEdEOEFwM1dmMiIsImV4cCI6MTc3MjAzMDg1NH0.fLHftQQz7TVYEDaMaL5UrrTVELpvk-KvERvVQsFTlBI" \
-                    -H "User-Agent: ani-cli-subs/1.0")"
-
-    # Verificar que se obtuvo URL
-    if [ -z "$subtitle_url" ] || [ "$subtitle_url" == "null" ]; then
-        echo "No se pudo obtener la URL del subtítulo para subs_id $subs_id"
-        return 1
-    fi
-
-    # Descargar el subtítulo
-    
-    actual_sub_url=$(echo "$subtitle_url" | jq -r .link)
-    
-    wget -O "${dir}/subs.srt" "${actual_sub_url}"
-  
-    }
-
-main
+select_anime
+rm "${anime_path}/sub.list"
+rm "${anime_path}/dub.list"

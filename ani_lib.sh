@@ -257,11 +257,12 @@ time_until_next_ep() {
 
 # get the episodes list of the selected anime
 episodes_list() {
+    #First argument show id Second argument mode
     #ShowId is the first argument
     #shellcheck disable=SC2016
     episodes_list_gql='query ($showId: String!) { show( _id: $showId ) { _id availableEpisodesDetail }}'
 
-    curl -e "$allanime_refr" -s -G "${allanime_api}/api" --data-urlencode "variables={\"showId\":\"$*\"}" --data-urlencode "query=$episodes_list_gql" -A "$agent" | sed -nE "s|.*$mode\":\[([0-9.\",]*)\].*|\1|p" | sed 's|,|\
+    curl -e "$allanime_refr" -s -G "${allanime_api}/api" --data-urlencode "variables={\"showId\":\"$1\"}" --data-urlencode "query=$episodes_list_gql" -A "$agent" | sed -nE "s|.*$2\":\[([0-9.\",]*)\].*|\1|p" | sed 's|,|\
 |g; s|"||g' | sort -n -k 1
 }
 
@@ -286,8 +287,9 @@ update_history() {
 }
 
 download() {
-    # First argument episode_url Second argument mode
+    # First argument episode_url Second argument mode Third argument download_dir
     # download subtitle if it's set
+    download_dir=$3
     case $1 in
         *m3u8*)
             if command -v "yt-dlp" >/dev/null; then
