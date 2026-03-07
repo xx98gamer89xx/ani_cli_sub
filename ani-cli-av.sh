@@ -3,14 +3,22 @@ wanted_server="PDrain"
 download_dir="/home/donar"
 declare -A servers
 mode="stream"
+dub=0
 
-while getopts "dh" option; do
+while getopts "Ddh" option; do
   case $option in
+    D)
+     dub=1
+     ;;
     d)
       mode="download"
       ;;
     h)
-      echo "Ejecuta sin argumentos para stremear y con -d para descargar en el download_dir especificado en el .sh (${download_dir})"
+      printf "Opciones: \n
+-h Muestra este mensaje \n        
+-D Activa el modo dub, para ver versiones dobladas (es posible que no haya version doblada, por defecto está desactivado) \n
+-d Activa el modo descargar (no stremea, guarda el archivo en ${download_dir})"
+      exit
       ;;
   esac
 done
@@ -34,7 +42,12 @@ get_episodes()
 get_episode_link()
     {
     episode_page_link="https://animeav1.com/media/${avaliable_animes["$slug_index"]}/${episode_index}"
-    episode_data=$(curl -s "$episode_page_link" | grep -m2 "data" | tail -n1 | grep -o "SUB.*")
+    episode_data_sub_dub=$(curl -s "$episode_page_link" | grep -m2 "data" | tail -n1 | grep -o "SUB.*" | grep -o "downloads.*")
+    if [ "$dub" -eq 0 ]; then
+        episode_data="${episode_data_sub_dub%%DUB*}"
+    else
+        episode_data="${episode_data_sub_dub##*DUB}"
+    fi
     servers_list=$(echo "${episode_data//\}/\}$'\n'}" | grep -o "server.*")
     while IFS= read -r line; do
         server=${line#server:\"}
@@ -70,7 +83,6 @@ menu()
     echo "Introduce tu búsqueda: "
     read search
     search_anime "$search"
-    clear
     echo "Elige entre los disponibles: "
     for (( i=0; i<${#avaliable_animes[@]}; i++ )); do
         echo "$(( i + 1 )). ${avaliable_animes[${i}]}"
@@ -78,13 +90,13 @@ menu()
     read anime_index
     slug_index=$(( anime_index - 1 ))
     get_episodes    
-    clear
     echo "Elige episodio (${episodes_number}): "
     read episode_index
     get_episode_link
-    if [ mode="strem" ]; then
+    echo "Mode=$mode"
+    if [ "$mode" == "stream" ]; then
         stream_episode
-    elif [ mode="download" ]; then
+    elif [ "$mode" == "download" ]; then
         download_episode
     else
         echo "Invalid mode error"
