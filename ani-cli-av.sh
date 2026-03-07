@@ -42,7 +42,8 @@ get_episodes()
 get_episode_link()
     {
     episode_page_link="https://animeav1.com/media/${avaliable_animes["$slug_index"]}/${episode_index}"
-    episode_data_sub_dub=$(curl -s "$episode_page_link" | grep -m2 "data" | tail -n1 | grep -o "SUB.*" | grep -o "downloads.*")
+    episode_data_sub_dub=$(curl -s "$episode_page_link" | grep -o "SUB.*" | grep -o "downloads.*")
+    echo "$episode_data_sub_dub"
     if [ "$dub" -eq 0 ]; then
         episode_data="${episode_data_sub_dub%%DUB*}"
     else
