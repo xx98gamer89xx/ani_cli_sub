@@ -85,6 +85,7 @@ get_episode_link()
     }
 stream_episode()
     {
+    echo "Streaming episode"
     if [ "$wanted_server" = "MP4Upload" ]; then
         mpv \
                       --tls-verify=no \
@@ -97,6 +98,7 @@ stream_episode()
     }
 download_episode()
     {
+    echo "Downloading episode"
     if [ "$wanted_server" = "MP4Upload" ];then
         curl -k "$file_link" \
                       -H 'User-Agent: Mozilla/5.0' \
@@ -133,13 +135,14 @@ menu()
     read episode_index
     get_episode_servers
     get_episode_link
-    if [ "$mode" == "stream" ]; then
+    if [ "$mode" = "stream" ]; then
+        echo "Mode=$mode"
         stream_episode
-    elif [ "$mode" == "download" ]; then
+    elif [ "$mode" = "download" ]; then
+        echo "Mode=$mode"
         download_episode
     else
         echo "Invalid mode error"
     fi
 }       
 menu    
-    
