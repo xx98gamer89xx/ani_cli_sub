@@ -1,6 +1,6 @@
 #!/bin/bash
 wanted_server="PDrain"
-download_dir="/home/donar"
+download_dir="/path/to/download/"
 declare -A servers
 mode="stream"
 dub=0
@@ -39,11 +39,10 @@ get_episodes()
     link="https://animeav1.com/media/${avaliable_animes["$slug_index"]}"
     episodes_number=$(curl -s "$link" | grep -o "href=\"/media/${avaliable_animes["$slug_index"]}/" | grep -c "href")
     }
-get_episode_link()
+get_episode_servers()
     {
     episode_page_link="https://animeav1.com/media/${avaliable_animes["$slug_index"]}/${episode_index}"
     episode_data_sub_dub=$(curl -s "$episode_page_link" | grep -o "SUB.*" | grep -o "downloads.*")
-    echo "$episode_data_sub_dub"
     if [ "$dub" -eq 0 ]; then
         episode_data="${episode_data_sub_dub%%DUB*}"
     else
@@ -60,22 +59,61 @@ get_episode_link()
         servers["$server"]="$url"
     done <<< "$servers_list"
     }
-stream_episode()
+get_episode_link() 
     {
-    ## Hay que implementar la opción de distintos servidores, de momento, solo PDrain por su sencillez
     if [ "$wanted_server" = "PDrain" ]; then
         embedded_link="${servers[PDrain]}"
         file_id="${embedded_link##*/}"
         file_link="https://pixeldrain.com/api/file/${file_id}"
-        mpv "$file_link"
+        wget "$file_link" -O "${download_dir}/${avaliable_animes[${slug_index}]-Ep${episode_index}.mp4}"
+    elif [ "$wanted_server" = "MP4Upload" ]; then
+        ## Generate cookies
+        curl -c "${download_dir}/.cookies.txt" \
+                      -A "Mozilla/5.0" \
+                      https://www.mp4upload.com/j70hobym0b7k \
+                      -o page.html
+        embedded_link="${servers[MP4Upload]}"
+        file_id=${embedded_link##*/}
+        base_link=$( curl -v "$embedded_link" \
+                      -b "${download_dir}/.cookies.txt" \
+                      -A "Mozilla/5.0" \
+                      -H 'Content-Type: application/x-www-form-urlencoded' \
+                      --data 'op=download2&id=j70hobym0b7k&rand=&referer=https%3A%2F%2Fwww.mp4upload.com%2F&method_free=Free+Download' 2>&1 | grep "location" )
+        file_link="${base_link#*:}"
+        file_link=$(echo $file_link | tr -d '\r\n')
+    fi
+    }
+stream_episode()
+    {
+    if [ "$wanted_server" = "MP4Upload" ]; then
+        mpv \
+                      --tls-verify=no \
+                      --http-header-fields="Referer: https://www.mp4upload.com/" \
+                      --cookies-file="${download_dir}/.cookies.txt" \
+                      "$file_link"
+    else
+        mpv "$file_link"    
     fi
     }
 download_episode()
     {
-    if [ "$wanted_server" = "PDrain" ]; then
-        embedded_link="${servers[PDrain]}"
-        file_id="${embedded_link##*/}"
-        file_link="https://pixeldrain.com/api/file/${file_id}"
+    if [ "$wanted_server" = "MP4Upload" ];then
+        curl -k "$file_link" \
+                      -H 'User-Agent: Mozilla/5.0' \
+                      -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' \
+                      -H 'Accept-Language: en-US,en;q=0.9'\
+                      -H 'Accept-Encoding: gzip, deflate, br, zstd' \
+                      -H 'Referer: https://www.mp4upload.com/' \
+                      -H 'Sec-GPC: 1' \
+                      -H 'Connection: keep-alive' \
+                      -c "${download_dir}/.cookies.txt" \
+                      -H 'Upgrade-Insecure-Requests: 1' \
+                      -H 'Sec-Fetch-Dest: document' \
+                      -H 'Sec-Fetch-Mode: navigate' \
+                      -H 'Sec-Fetch-Site: same-site' \
+                      -H 'Sec-Fetch-User: ?1' \
+                      -H 'Priority: u=0, i' --output "${download_dir}/${avaliable_animes[${slug_index}]-Ep${episode_index}.mp4}"
+    else
         wget "$file_link" -O "${download_dir}/${avaliable_animes[${slug_index}]-Ep${episode_index}.mp4}"
     fi
     }
@@ -93,8 +131,8 @@ menu()
     get_episodes    
     echo "Elige episodio (${episodes_number}): "
     read episode_index
+    get_episode_servers
     get_episode_link
-    echo "Mode=$mode"
     if [ "$mode" == "stream" ]; then
         stream_episode
     elif [ "$mode" == "download" ]; then
