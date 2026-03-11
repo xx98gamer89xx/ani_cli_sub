@@ -1,6 +1,7 @@
 #!/bin/bash
-wanted_server="PDrain"
-download_dir="/path/to/download/"
+
+wanted_server=""
+download_dir="/home/donar/.anime"
 declare -A servers
 mode="stream"
 dub=0
@@ -52,21 +53,23 @@ get_episode_servers()
     while IFS= read -r line; do
         server=${line#server:\"}
         server=${server%%\"*}
+        if [ "$server" = "MP4Upload" ] || [ "$server" = "PDrain" ]; then
+             url=${line#*url:\"}
+            url=${url%\"*}
 
-        url=${line#*url:\"}
-        url=${url%\"*}
-
-        servers["$server"]="$url"
+            servers["$server"]="$url"
+        fi
     done <<< "$servers_list"
     }
 get_episode_link() 
     {
-    if [ "$wanted_server" = "PDrain" ]; then
+    if [[ -v servers[PDrain] ]]; then
+        wanted_server="PDrain"
         embedded_link="${servers[PDrain]}"
         file_id="${embedded_link##*/}"
         file_link="https://pixeldrain.com/api/file/${file_id}"
-        wget "$file_link" -O "${download_dir}/${avaliable_animes[${slug_index}]-Ep${episode_index}.mp4}"
-    elif [ "$wanted_server" = "MP4Upload" ]; then
+    elif [[ -v servers[MP4Upload] ]]; then
+        wanted_server="MP4Upload"
         ## Generate cookies
         curl -c "${download_dir}/.cookies.txt" \
                       -A "Mozilla/5.0" \
@@ -78,14 +81,16 @@ get_episode_link()
                       -b "${download_dir}/.cookies.txt" \
                       -A "Mozilla/5.0" \
                       -H 'Content-Type: application/x-www-form-urlencoded' \
-                      --data 'op=download2&id=j70hobym0b7k&rand=&referer=https%3A%2F%2Fwww.mp4upload.com%2F&method_free=Free+Download' 2>&1 | grep "location" )
+                      --data "op=download2&id=${file_id}&rand=&referer=https%3A%2F%2Fwww.mp4upload.com%2F&method_free=Free+Download" 2>&1 | grep "location" )
         file_link="${base_link#*:}"
         file_link=$(echo $file_link | tr -d '\r\n')
+    else 
+        echo "No hay servidor válido disponible"
+        exit
     fi
     }
 stream_episode()
     {
-    echo "Streaming episode"
     if [ "$wanted_server" = "MP4Upload" ]; then
         mpv \
                       --tls-verify=no \
@@ -93,12 +98,12 @@ stream_episode()
                       --cookies-file="${download_dir}/.cookies.txt" \
                       "$file_link"
     else
+        echo "Streaming desde link: $file_link"
         mpv "$file_link"    
     fi
     }
 download_episode()
     {
-    echo "Downloading episode"
     if [ "$wanted_server" = "MP4Upload" ];then
         curl -k "$file_link" \
                       -H 'User-Agent: Mozilla/5.0' \
@@ -116,6 +121,7 @@ download_episode()
                       -H 'Sec-Fetch-User: ?1' \
                       -H 'Priority: u=0, i' --output "${download_dir}/${avaliable_animes[${slug_index}]-Ep${episode_index}.mp4}"
     else
+        echo "Descargando episodio de $file_link"
         wget "$file_link" -O "${download_dir}/${avaliable_animes[${slug_index}]-Ep${episode_index}.mp4}"
     fi
     }
@@ -136,10 +142,8 @@ menu()
     get_episode_servers
     get_episode_link
     if [ "$mode" = "stream" ]; then
-        echo "Mode=$mode"
         stream_episode
     elif [ "$mode" = "download" ]; then
-        echo "Mode=$mode"
         download_episode
     else
         echo "Invalid mode error"
