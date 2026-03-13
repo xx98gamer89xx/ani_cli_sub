@@ -92,12 +92,13 @@ get_episode_link()
 stream_episode()
     {
     if [ "$wanted_server" = "MP4Upload" ]; then
+        echo "Streaming desde link: $file_link"
         mpv --really-quiet\
                       --tls-verify=no \
                       --http-header-fields="Referer: https://www.mp4upload.com/" \
                       --cookies-file="${download_dir}/.cookies.txt" \
                       "$file_link"
-    else
+    else    
         echo "Streaming desde link: $file_link"
         mpv --really-quiet "$file_link"    
     fi
