@@ -74,7 +74,6 @@ get_episode_link()
         curl -s -c "${download_dir}/.cookies.txt" \
                       -A "Mozilla/5.0" \
                       https://www.mp4upload.com/j70hobym0b7k \
-                      -o page.html
         embedded_link="${servers[MP4Upload]}"
         file_id=${embedded_link##*/}
         base_link=$( curl -s -v "$embedded_link" \
