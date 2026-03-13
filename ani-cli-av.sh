@@ -71,13 +71,13 @@ get_episode_link()
     elif [[ -v servers[MP4Upload] ]]; then
         wanted_server="MP4Upload"
         ## Generate cookies
-        curl -c "${download_dir}/.cookies.txt" \
+        curl -s -c "${download_dir}/.cookies.txt" \
                       -A "Mozilla/5.0" \
                       https://www.mp4upload.com/j70hobym0b7k \
                       -o page.html
         embedded_link="${servers[MP4Upload]}"
         file_id=${embedded_link##*/}
-        base_link=$( curl -v "$embedded_link" \
+        base_link=$( curl -s -v "$embedded_link" \
                       -b "${download_dir}/.cookies.txt" \
                       -A "Mozilla/5.0" \
                       -H 'Content-Type: application/x-www-form-urlencoded' \
@@ -92,20 +92,20 @@ get_episode_link()
 stream_episode()
     {
     if [ "$wanted_server" = "MP4Upload" ]; then
-        mpv \
+        mpv --really-quiet\
                       --tls-verify=no \
                       --http-header-fields="Referer: https://www.mp4upload.com/" \
                       --cookies-file="${download_dir}/.cookies.txt" \
                       "$file_link"
     else
         echo "Streaming desde link: $file_link"
-        mpv "$file_link"    
+        mpv --really-quiet "$file_link"    
     fi
     }
 download_episode()
     {
     if [ "$wanted_server" = "MP4Upload" ];then
-        curl -k "$file_link" \
+        curl -s -k "$file_link" \
                       -H 'User-Agent: Mozilla/5.0' \
                       -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' \
                       -H 'Accept-Language: en-US,en;q=0.9'\
