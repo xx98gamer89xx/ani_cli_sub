@@ -54,7 +54,7 @@ get_episode_servers()
         server=${line#server:\"}
         server=${server%%\"*}
         if [ "$server" = "MP4Upload" ] || [ "$server" = "PDrain" ]; then
-             url=${line#*url:\"}
+            url=${line#*url:\"}
             url=${url%\"*}
 
             servers["$server"]="$url"
@@ -89,6 +89,41 @@ get_episode_link()
         exit
     fi
     }
+
+read_last_episode()
+{
+    while IFS= read -r line; do
+        anime=${line%% *}
+        if [[ "$anime" = "${avaliable_animes[${slug_index}]}" ]]; then
+            echo "El último capítulo que viste fue: ${line##* }"
+            return 0;
+        fi
+    done < "${download_dir}/.last_episodes"
+    echo "No hay información del último episodio visto"
+}
+
+save_last_episode()
+    {
+    line_index=1
+    anime_found=0
+    while IFS= read -r line; do
+        anime=${line%% *}
+        if [[ "$anime" = "${avaliable_animes[${slug_index}]}" ]]; then            
+            anime_found=1
+            break;
+        fi
+        ((line_index++))
+    done < "${download_dir}/.last_episodes"
+    if [[ "$anime_found" -eq 1 ]]; then
+        sed "${line_index}s/.*/${avaliable_animes[${slug_index}]} ${episode_index}/"\
+             "${download_dir}/.last_episodes" > "${download_dir}/.last_episodes_tmp"
+        cp "${download_dir}/.last_episodes_tmp" "${download_dir}/.last_episodes"    
+    else
+        echo "${avaliable_animes[${slug_index}]} ${episode_index}" >> "${download_dir}/.last_episodes"
+    fi
+    return 0;
+    }
+
 stream_episode()
     {
     if [ "$wanted_server" = "MP4Upload" ]; then
@@ -137,9 +172,11 @@ menu()
     done
     read anime_index
     slug_index=$(( anime_index - 1 ))
-    get_episodes    
+    get_episodes
+    read_last_episode    
     echo "Elige episodio (${episodes_number}): "
     read episode_index
+    save_last_episode
     get_episode_servers
     get_episode_link
     if [ "$mode" = "stream" ]; then
