@@ -44,10 +44,28 @@ get_episode_servers()
     {
     episode_page_link="https://animeav1.com/media/${avaliable_animes["$slug_index"]}/${episode_index}"
     episode_data_sub_dub=$(curl -s "$episode_page_link" | grep -o "SUB.*" | grep -o "downloads.*")
-    if [ "$dub" -eq 0 ]; then
-        episode_data="${episode_data_sub_dub%%DUB*}"
+    pos_sub=$(awk -v a="$episode_data_sub_dub" 'BEGIN{print index(a,"SUB")}')
+    pos_dub=$(awk -v a="$episode_data_sub_dub" 'BEGIN{print index(a,"DUB")}')
+    if (( pos_sub > 0 && (pos_sub < pos_dub || pos_dub == 0) )); then
+        first="SUB"
+        pos=$pos_sub
     else
-        episode_data="${episode_data_sub_dub##*DUB}"
+        first="DUB"
+        pos=$pos_dub
+    fi
+    
+    if [ "$dub" -eq 0 ]; then
+        if [ "$first" = "DUB" ]; then
+            episode_data="${episode_data_sub_dub##SUB*}"
+        else
+            episode_data="${episode_data_sub_dub%%*DUB}"
+        fi
+    else
+        if [ "$first" = "DUB" ]; then
+            episode_data="${episode_data_sub_dub%%*SUB}"
+        else
+            episode_data="${episode_data_sub_dub##DUB*}"
+        fi
     fi
     servers_list=$(echo "${episode_data//\}/\}$'\n'}" | grep -o "server.*")
     while IFS= read -r line; do
