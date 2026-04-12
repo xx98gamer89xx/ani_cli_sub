@@ -53,18 +53,19 @@ get_episode_servers()
         first="DUB"
         pos=$pos_dub
     fi
-    
+    echo "All episodes avaliable: $episode_data_sub_dub"
     if [ "$dub" -eq 0 ]; then
         if [ "$first" = "DUB" ]; then
-            episode_data="${episode_data_sub_dub##SUB*}"
-        else
-            episode_data="${episode_data_sub_dub%%*DUB}"
-        fi
+            episode_data="${episode_data_sub_dub##*SUB}"
+            echo "Avaliable episodes first DUB: $episode_data"
+	else
+            episode_data="${episode_data_sub_dub%%DUB*}"
+	fi
     else
         if [ "$first" = "DUB" ]; then
-            episode_data="${episode_data_sub_dub%%*SUB}"
+            episode_data="${episode_data_sub_dub%%SUB*}"
         else
-            episode_data="${episode_data_sub_dub##DUB*}"
+            episode_data="${episode_data_sub_dub##*DUB}"
         fi
     fi
     servers_list=$(echo "${episode_data//\}/\}$'\n'}" | grep -o "server.*")
