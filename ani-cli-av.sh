@@ -1,6 +1,6 @@
 #!/bin/bash
 
-wanted_server=""
+wanted_server="MP4Upload"
 download_dir="/home/donar/.anime"
 declare -A servers
 mode="stream"
@@ -53,11 +53,9 @@ get_episode_servers()
         first="DUB"
         pos=$pos_dub
     fi
-    echo "All episodes avaliable: $episode_data_sub_dub"
     if [ "$dub" -eq 0 ]; then
         if [ "$first" = "DUB" ]; then
             episode_data="${episode_data_sub_dub##*SUB}"
-            echo "Avaliable episodes first DUB: $episode_data"
 	else
             episode_data="${episode_data_sub_dub%%DUB*}"
 	fi
@@ -81,33 +79,40 @@ get_episode_servers()
     done <<< "$servers_list"
     }
 get_episode_link() 
-    {
-    if [[ -v servers[PDrain] ]]; then
-        wanted_server="PDrain"
-        embedded_link="${servers[PDrain]}"
-        file_id="${embedded_link##*/}"
-        file_link="https://pixeldrain.com/api/file/${file_id}"
-    elif [[ -v servers[MP4Upload] ]]; then
-        wanted_server="MP4Upload"
-        ## Generate cookies
-        curl -s -c "${download_dir}/.cookies.txt" \
+{
+    if [ "$wanted_server" = "" ]; then
+        if [[ -v servers[PDrain] ]]; then
+            wanted_server="PDrain"
+            embedded_link="${servers[PDrain]}"
+            file_id="${embedded_link##*/}"
+            file_link="https://pixeldrain.com/api/file/${file_id}"
+        else
+            wanted_server = "MP4Upload"
+        fi
+    fi
+    if [ "$wanted_server" = "MP4Upload" ]; then
+        if [[ -v servers[MP4Upload] ]]; then
+            wanted_server="MP4Upload"
+            ## Generate cookies
+            curl -s -c "${download_dir}/.cookies.txt" \
                       -A "Mozilla/5.0" \
                       https://www.mp4upload.com/j70hobym0b7k \
                       -o /dev/null
-        embedded_link="${servers[MP4Upload]}"
-        file_id=${embedded_link##*/}
-        base_link=$( curl -s -v "$embedded_link" \
+            embedded_link="${servers[MP4Upload]}"
+            file_id=${embedded_link##*/}
+            base_link=$( curl -s -v "$embedded_link" \
                       -b "${download_dir}/.cookies.txt" \
                       -A "Mozilla/5.0" \
                       -H 'Content-Type: application/x-www-form-urlencoded' \
                       --data "op=download2&id=${file_id}&rand=&referer=https%3A%2F%2Fwww.mp4upload.com%2F&method_free=Free+Download" 2>&1 | grep "location" )
-        file_link="${base_link#*:}"
-        file_link=$(echo $file_link | tr -d '\r\n')
-    else 
-        echo "No hay servidor válido disponible"
+            file_link="${base_link#*:}"
+            file_link=$(echo $file_link | tr -d '\r\n')
+        else 
+            echo "No hay servidor válido disponible"
         exit
+        fi
     fi
-    }
+}
 
 read_last_episode()
 {
@@ -141,6 +146,15 @@ save_last_episode()
         echo "${avaliable_animes[${slug_index}]} ${episode_index}" >> "${download_dir}/.last_episodes"
     fi
     return 0;
+    }
+
+link_check()
+    {
+    check=$(curl -k "$file_link" | jq ".status")
+    if [ "$check" = "false" ]; then
+        wanted_server="MP4Upload" 
+        get_episode_link
+    fi
     }
 
 stream_episode()
@@ -198,6 +212,7 @@ menu()
     save_last_episode
     get_episode_servers
     get_episode_link
+    link_check
     if [ "$mode" = "stream" ]; then
         stream_episode
     elif [ "$mode" = "download" ]; then
