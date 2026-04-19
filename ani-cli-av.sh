@@ -150,7 +150,7 @@ save_last_episode()
 
 link_check()
     {
-    check=$(curl -k "$file_link" | jq ".status")
+    check=$(curl -s -k "$file_link" | jq ".status")
     if [ "$check" = "false" ]; then
         wanted_server="MP4Upload" 
         get_episode_link
