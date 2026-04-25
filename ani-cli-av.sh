@@ -13,6 +13,7 @@ options=()
 S='\033[0;32m'
 NS='\033[0m'
 
+
 while getopts "Ddh" arguments; do
   case $argument in
     D)
@@ -51,7 +52,6 @@ get_episodes()
 get_episode_servers()
     {
     slug=$1
-    echo "$slug" >> /home/donar/.anime/.log
     episode_page_link="https://animeav1.com/media/${slug}/${episode_index}"
     episode_data_sub_dub=$(curl -s "$episode_page_link" | grep -o "SUB.*" | grep -o "downloads.*")
     pos_sub=$(awk -v a="$episode_data_sub_dub" 'BEGIN{print index(a,"SUB")}')
@@ -87,7 +87,6 @@ get_episode_servers()
             servers["$server"]="$url"
         fi
     done <<< "$servers_list"
-    echo "${!servers_list[@]}" >> /home/donar/.anime/.log
     }
 
 get_episode_link() 
@@ -133,7 +132,6 @@ read_last_episode()
         anime=${line%% *}
         if [[ "$anime" = "${slug}" ]]; then
             last_watched="${line##* }"
-            echo "$line" > /home/donar/.log
             return 0;
         fi
     done < "${download_dir}/.last_episodes"
@@ -243,6 +241,8 @@ execute_option()
     else
         echo "Invalid mode error"
     fi
+    search=""
+    options=("Continuar viendo" "Volver al inicio" "Salir")
 }
 
 enter_pressed()
@@ -254,9 +254,28 @@ enter_pressed()
             search=""
             menu_2
         else
-            episode_index="${options[${selected}]}"
-            execute_option
-            menu_2
+            if [ "${options[${selected}]}" = "Continuar viendo" ]; then
+                episode_index=$(( $episode_index + 1 ))
+                wanted_server=""
+                declare -gA servers
+                execute_option
+                menu_2
+            elif [ "${options[${selected}]}" = "Volver al inicio" ]; then
+                declare -gA servers
+                wanted_server=""
+                option=""
+                search=""
+                options=()
+                selected=0
+                list_watched_animes
+                menu_2                    
+            elif [ "${options[${selected}]}" = "Salir" ]; then
+                exit 1
+            else
+                episode_index="${options[${selected}]}"
+                execute_option
+                menu_2
+            fi
         fi
     else
         if [ "$option" = "" ]; then
@@ -267,6 +286,7 @@ enter_pressed()
         else
             episode_index="$search"
             execute_option
+            menu_2
         fi
     fi
 }
@@ -342,6 +362,14 @@ menu_2()
         fi
     done
 }
+
+cleanup()
+{
+    tput cnorm
+}
+
+tput civis
+trap cleanup EXIT
 
 list_watched_animes
 menu_2    
