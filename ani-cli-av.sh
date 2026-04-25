@@ -1,13 +1,20 @@
 #!/bin/bash
 
-wanted_server="MP4Upload"
+search=""
+selected=0
+option=""
+last_watched=0
+wanted_server=""
 download_dir="/home/donar/.anime"
 declare -A servers
 mode="stream"
 dub=0
+options=()
+S='\033[0;32m'
+NS='\033[0m'
 
-while getopts "Ddh" option; do
-  case $option in
+while getopts "Ddh" arguments; do
+  case $argument in
     D)
      dub=1
      ;;
@@ -37,12 +44,15 @@ search_anime()
     }
 get_episodes()
     {
-    link="https://animeav1.com/media/${avaliable_animes["$slug_index"]}"
-    episodes_number=$(curl -s "$link" | grep -o "href=\"/media/${avaliable_animes["$slug_index"]}/" | grep -c "href")
+    slug=$1
+    link="https://animeav1.com/media/${slug}"
+    episodes_number=$(curl -s "$link" | grep -o "href=\"/media/${slug}/" | grep -c "href")
     }
 get_episode_servers()
     {
-    episode_page_link="https://animeav1.com/media/${avaliable_animes["$slug_index"]}/${episode_index}"
+    slug=$1
+    echo "$slug" >> /home/donar/.anime/.log
+    episode_page_link="https://animeav1.com/media/${slug}/${episode_index}"
     episode_data_sub_dub=$(curl -s "$episode_page_link" | grep -o "SUB.*" | grep -o "downloads.*")
     pos_sub=$(awk -v a="$episode_data_sub_dub" 'BEGIN{print index(a,"SUB")}')
     pos_dub=$(awk -v a="$episode_data_sub_dub" 'BEGIN{print index(a,"DUB")}')
@@ -77,7 +87,9 @@ get_episode_servers()
             servers["$server"]="$url"
         fi
     done <<< "$servers_list"
+    echo "${!servers_list[@]}" >> /home/donar/.anime/.log
     }
+
 get_episode_link() 
 {
     if [ "$wanted_server" = "" ]; then
@@ -87,7 +99,7 @@ get_episode_link()
             file_id="${embedded_link##*/}"
             file_link="https://pixeldrain.com/api/file/${file_id}"
         else
-            wanted_server = "MP4Upload"
+            wanted_server="MP4Upload"
         fi
     fi
     if [ "$wanted_server" = "MP4Upload" ]; then
@@ -109,48 +121,56 @@ get_episode_link()
             file_link=$(echo $file_link | tr -d '\r\n')
         else 
             echo "No hay servidor válido disponible"
-        exit
+            exit
         fi
     fi
 }
 
 read_last_episode()
 {
+    slug=$1
     while IFS= read -r line; do
         anime=${line%% *}
-        if [[ "$anime" = "${avaliable_animes[${slug_index}]}" ]]; then
-            echo "El último capítulo que viste fue: ${line##* }"
+        if [[ "$anime" = "${slug}" ]]; then
+            last_watched="${line##* }"
+            echo "$line" > /home/donar/.log
             return 0;
         fi
     done < "${download_dir}/.last_episodes"
-    echo "No hay información del último episodio visto"
+    last_watched=1
 }
 
 save_last_episode()
     {
+    slug=$1
     line_index=1
     anime_found=0
     while IFS= read -r line; do
         anime=${line%% *}
-        if [[ "$anime" = "${avaliable_animes[${slug_index}]}" ]]; then            
+        if [[ "$anime" = "${slug}" ]]; then            
             anime_found=1
             break;
         fi
         ((line_index++))
     done < "${download_dir}/.last_episodes"
+
     if [[ "$anime_found" -eq 1 ]]; then
-        sed "${line_index}s/.*/${avaliable_animes[${slug_index}]} ${episode_index}/"\
-             "${download_dir}/.last_episodes" > "${download_dir}/.last_episodes_tmp"
-        cp "${download_dir}/.last_episodes_tmp" "${download_dir}/.last_episodes"    
-    else
-        echo "${avaliable_animes[${slug_index}]} ${episode_index}" >> "${download_dir}/.last_episodes"
+        sed -i "${line_index}d" "${download_dir}/.last_episodes" # Eliminates the last entry of that anime
     fi
+
+    # Adds the anime that s being watched to the top of the list followed by the last watched episode number
+    if [ -s "${download_dir}/.last_episodes" ]; then
+        sed -i "1i ${slug} ${episode_index}" "${download_dir}/.last_episodes"
+    else
+        echo "${slug} ${episode_index}" > "${download_dir}/.last_episodes"
+    fi
+
     return 0;
     }
 
 link_check()
     {
-    check=$(curl -s -k "$file_link" | jq ".status")
+    check=$(curl -s -k "$file_link" | jq -r '.results[].uri' 2> /dev/null ".status")
     if [ "$check" = "false" ]; then
         wanted_server="MP4Upload" 
         get_episode_link
@@ -171,6 +191,7 @@ stream_episode()
         mpv --really-quiet "$file_link"    
     fi
     }
+
 download_episode()
     {
     if [ "$wanted_server" = "MP4Upload" ];then
@@ -188,29 +209,31 @@ download_episode()
                       -H 'Sec-Fetch-Mode: navigate' \
                       -H 'Sec-Fetch-Site: same-site' \
                       -H 'Sec-Fetch-User: ?1' \
-                      -H 'Priority: u=0, i' --output "${download_dir}/${avaliable_animes[${slug_index}]-Ep${episode_index}.mp4}"
+                      -H 'Priority: u=0, i' --output "${download_dir}/${slug}-Ep${episode_index}.mp4}"
     else
         echo "Descargando episodio de $file_link"
-        wget "$file_link" -O "${download_dir}/${avaliable_animes[${slug_index}]-Ep${episode_index}.mp4}"
+        wget "$file_link" -O "${download_dir}/${slug}-Ep${episode_index}.mp4}"
     fi
     }
-menu()
-    {
-    echo "Introduce tu búsqueda: "
-    read search
-    search_anime "$search"
-    echo "Elige entre los disponibles: "
-    for (( i=0; i<${#avaliable_animes[@]}; i++ )); do
-        echo "$(( i + 1 )). ${avaliable_animes[${i}]}"
-    done
-    read anime_index
-    slug_index=$(( anime_index - 1 ))
-    get_episodes
-    read_last_episode    
-    echo "Elige episodio (${episodes_number}): "
-    read episode_index
-    save_last_episode
-    get_episode_servers
+
+set_options_to_episodes()
+{
+        get_episodes "$option"
+        read_last_episode "$option"
+        search="$last_watched"
+        if (( last_watched + 20 > episodes_number )); then
+            last_number="$episodes_number"
+        else
+            last_number=$(( last_watched + 20 ))
+        fi
+        echo "Ultimo visto: $last_watched Ultimo numero: $last_number"
+        options=($(seq "$last_watched" 1 "$last_number"))
+}
+
+execute_option()
+{
+    save_last_episode "$option"
+    get_episode_servers "$option"
     get_episode_link
     link_check
     if [ "$mode" = "stream" ]; then
@@ -220,5 +243,105 @@ menu()
     else
         echo "Invalid mode error"
     fi
-}       
-menu    
+}
+
+enter_pressed()
+{
+    if [ "$search" = "" ]; then
+        if [ "$option" = "" ]; then
+            option="${options[${selected}]}"
+            set_options_to_episodes
+            search=""
+            menu_2
+        else
+            episode_index="${options[${selected}]}"
+            execute_option
+            menu_2
+        fi
+    else
+        if [ "$option" = "" ]; then
+            search_anime "$search"
+            options=("${avaliable_animes[@]}")
+            search=""
+            menu_2
+        else
+            episode_index="$search"
+            execute_option
+        fi
+    fi
+}
+
+list_watched_animes()
+{
+    # Add to options the watched animes
+    line_number=0
+    while IFS= read -r line; do
+        anime=${line%% *}
+        options[$line_number]="$anime"
+        line_number=$(( $line_number + 1 ))
+    done < "${download_dir}/.last_episodes"
+}
+
+menu_2()
+{
+    selected=0
+        
+    while [ 1 -eq 1 ]; do
+        #Draw menu and search
+        clear
+        echo "Búsqueda: $search"
+        for ((i = 0; i < "${#options[@]}"; i++))
+        do
+        if [ $i -eq $selected ]; then
+            echo -e "${S}$(( i + 1 )). ${options[${i}]}${NS}"
+        else
+            echo -e "$(( i + 1 )). ${options[${i}]}"
+        fi
+        done
+
+        # Read the input and execute it
+        escape_char=$(printf "\u1b")
+        IFS= read -rsn1 key # get 1 character
+
+        if [[ $key == $escape_char ]]; then
+            read -rsn2 key # read 2 more chars
+            case $key in
+                '[A')
+                if (( $selected > 0 )); then
+                    selected=$(( $selected - 1 ))
+                fi
+                ;;
+                '[B')
+                if (( $selected < $(( ${#options[@]} - 1 )) )); then
+                    selected=$(( $selected + 1 ))
+                fi
+                ;;
+                '')
+                    enter_pressed
+                    break
+                    ;;
+                " ")
+                    search="${search} ";;
+            esac
+        else
+            case $key in
+                '')
+                enter_pressed
+                break
+                ;;
+                ' ')
+                search="${search} ";;
+                $'\x7f')
+                    if [ ! "$search" = "" ]; then
+                        search=${search::-1}
+                    fi
+                    ;;
+                *)
+                search="${search}${key}";;
+            esac    
+        fi
+    done
+}
+
+list_watched_animes
+menu_2    
