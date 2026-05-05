@@ -1,7 +1,6 @@
 #!/bin/bash
 
 search=""
-selected=0
 option=""
 last_watched=0
 wanted_server=""
@@ -156,7 +155,7 @@ save_last_episode()
         sed -i "${line_index}d" "${download_dir}/.last_episodes" # Eliminates the last entry of that anime
     fi
 
-    # Adds the anime that s being watched to the top of the list followed by the last watched episode number
+    # Adds the anime that is being watched to the top of the list followed by the last watched episode number
     if [ -s "${download_dir}/.last_episodes" ]; then
         sed -i "1i ${slug} ${episode_index}" "${download_dir}/.last_episodes"
     else
@@ -216,8 +215,9 @@ download_episode()
 
 set_options_to_episodes()
 {
-        get_episodes "$option"
-        read_last_episode "$option"
+        anime=$1
+        get_episodes "$anime"
+        read_last_episode "$anime"
         search="$last_watched"
         if (( last_watched + 20 > episodes_number )); then
             last_number="$episodes_number"
@@ -230,8 +230,9 @@ set_options_to_episodes()
 
 execute_option()
 {
-    save_last_episode "$option"
-    get_episode_servers "$option"
+    watching_anime=$1
+    save_last_episode "$watching_anime"
+    get_episode_servers "$watching_anime"
     get_episode_link
     link_check
     if [ "$mode" = "stream" ]; then
@@ -245,48 +246,60 @@ execute_option()
     options=("Continuar viendo" "Volver al inicio" "Salir")
 }
 
+post_episode_menu()
+{
+option=$1
+if [ "$option" = "Continuar viendo" ]; then
+        if [ ! "$episode_index" -eq "$last_number" ]; then 
+            episode_index=$(( $episode_index + 1 ))
+        else
+            clear
+            echo "No hay más episodios de este anime"
+            sleep 0.5
+            post_episode_menu "Volver al inicio"
+        fi
+        wanted_server=""
+        declare -gA servers
+        execute_option "$selected_anime"
+        menu_2 "post_episode"
+   elif [ "${option}" = "Volver al inicio" ]; then
+        declare -gA servers
+        wanted_server=""
+        option=""
+        search=""
+        options=()
+        list_watched_animes
+        menu_2 "animes"
+    elif [ "${option}" = "Salir" ]; then
+        exit 1
+    fi
+}
+
 enter_pressed()
 {
     if [ "$search" = "" ]; then
-        if [ "$option" = "" ]; then
-            option="${options[${selected}]}"
-            set_options_to_episodes
+        if [ "$selections" = "animes" ]; then
+            selected_anime="${options[${selected}]}"
+            set_options_to_episodes "$selected_anime"
             search=""
-            menu_2
-        else
-            if [ "${options[${selected}]}" = "Continuar viendo" ]; then
-                episode_index=$(( $episode_index + 1 ))
-                wanted_server=""
-                declare -gA servers
-                execute_option
-                menu_2
-            elif [ "${options[${selected}]}" = "Volver al inicio" ]; then
-                declare -gA servers
-                wanted_server=""
-                option=""
-                search=""
-                options=()
-                selected=0
-                list_watched_animes
-                menu_2                    
-            elif [ "${options[${selected}]}" = "Salir" ]; then
-                exit 1
-            else
-                episode_index="${options[${selected}]}"
-                execute_option
-                menu_2
-            fi
+            menu_2 "episode_number"
+        elif [ "$selections" = "post_episode" ]; then
+            post_episode_menu "${options[${selected}]}"
+        elif [ "$selections" = "episode_number" ]; then
+            episode_index="${options[${selected}]}"
+            execute_option "$selected_anime"
+            menu_2 "post_episode"
         fi
     else
-        if [ "$option" = "" ]; then
+        if [ "$selections" = "animes" ]; then
             search_anime "$search"
             options=("${avaliable_animes[@]}")
             search=""
-            menu_2
-        else
+            menu_2 "animes"
+        elif [ "$selections" = "episode_number" ]; then
             episode_index="$search"
-            execute_option
-            menu_2
+            execute_option "$selected_anime"
+            menu_2 "post_episode"
         fi
     fi
 }
@@ -304,6 +317,7 @@ list_watched_animes()
 
 menu_2()
 {
+    selections=$1
     selected=0
         
     while [ 1 -eq 1 ]; do
@@ -372,4 +386,4 @@ tput civis
 trap cleanup EXIT
 
 list_watched_animes
-menu_2    
+menu_2 "animes"    
