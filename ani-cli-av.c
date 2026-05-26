@@ -13,8 +13,8 @@ struct anime_data
 struct server_data
 {
     char name[20];
-    char embedded_link[100];
-    char download_link[100];
+    char embedded_link[2000];
+    char download_link[2000];
 };
 
 char response[10000000] = "";
@@ -37,12 +37,18 @@ static size_t discard_body(void *ptr,
 
 static int response_length = 0;
 
-size_t header_callback(char *buffer, size_t size, size_t nitems, void *userdata)
+size_t header_callback(void *buffer, size_t size, size_t nitems, void *userdata)
 {
     size_t total = size * nitems;
 
-    // imprimir todos los headers
+    if (response_length + total >= sizeof(response) - 1)
+    {
+        printf("HEADER BUFFER OVERFLOW\n");
+        return 0;
+    }
+
     memcpy(response + response_length, buffer, total);
+
     response_length += total;
     response[response_length] = '\0';
 
@@ -70,6 +76,8 @@ void parse_array(cJSON *array)
 
 char* search(char search[])
 {
+    response_length = 0;
+    response[0] = '\0';
     strcpy(response, "");
     CURLcode result;
     CURL *curl;
@@ -113,6 +121,8 @@ char* search(char search[])
 
 char* get_episodes(char slug[])
 {
+  response_length = 0;
+  response[0] = '\0';
   strcpy(response, "");
   
   CURLcode result;
@@ -166,6 +176,7 @@ char* get_episodes(char slug[])
 
 int parse_episode_servers_and_links(int orientation, char* episode_dub_position, char* episode_sub_position, int substring_length, char* server)
 {
+    printf("\n PARSEADOR \n");
     char* last_sub_dub_position;
     int avaliable_servers_number = 0;
     if (orientation > 0)
@@ -187,30 +198,32 @@ int parse_episode_servers_and_links(int orientation, char* episode_dub_position,
         }
         else
         {
-            char server_name[20];
-            int server_characters_number = strstr(search, "\"") - search;
+            char server_name[100];
+            int server_characters_number = strstr(search + strlen("server:\""), "\"") - (search + strlen("server:\""));
             for (int i = 0; i < server_characters_number; i++)
             {
-                server_name[i] = *(search + i);
+                server_name[i] = *(search + strlen("server:\"") + i);
             }
-            if (server_name == "PDrain" || server_name == "MP4Upload")
+            server_name[server_characters_number] = '\0';
+            if (strcmp(server_name, "PDrain") == 0 || strcmp(server_name, "MP4Upload") == 0)
             {
                 avaliable_servers_number += 1;
                 avaliable_servers = realloc(avaliable_servers, avaliable_servers_number * sizeof(struct server_data));
-
+                printf("NOMBRE DEL SERVIDOR: %s \n", server_name);
                 strcpy(avaliable_servers[avaliable_servers_number - 1].name, server_name);
                 char *url_start = strstr(search, "url:\"");
-                char *url_end = strstr(search, "\"");
-                int url_lenght = url_end - url_start;
-                char episode_link[100];
+                char *url_end = strstr(url_start + strlen("url:\""), "\"");
+                int url_lenght = url_end - (url_start + strlen("url:\""));
+                char episode_link[1000];
                 for (int i = 0; i < url_lenght; i++)
                 {
-                    episode_link[i] = *(url_start + i);
+                    episode_link[i] = *(url_start + strlen("url:\"") + i);
                 }
+                episode_link[url_lenght] = '\0';
+                printf("LINK DE EPISODIO: %i", url_lenght);
                 strcpy(avaliable_servers[avaliable_servers_number - 1].embedded_link, episode_link);
-
             }
-            server = search + substring_length;
+            server = search + strlen("server:\"");
         }
     } 
     return 0;   
@@ -218,6 +231,8 @@ int parse_episode_servers_and_links(int orientation, char* episode_dub_position,
 
 int get_episode_link(char slug[], char episode_number[])
 {
+    response_length = 0;
+    response[0] = '\0';
     strcpy(response, "");
 
     char episode_page_link[100] = "https://animeav1.com/media/";
@@ -271,12 +286,14 @@ int get_episode_link(char slug[], char episode_number[])
 
 
 
-char* get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char file_id[], int avaliable_servers_number)
+int get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char file_id[], int avaliable_servers_index)
 {
-  char post_data[200] = "op=download2&id=";
+  printf("MP$ UPLOAD REQUEST");
+  char post_data[1000] = "op=download2&id=";
   strcat(post_data, file_id);
   strcat(post_data, "&rand=&referer=https%3A%2F%2Fwww.mp4upload.com%2F&method_free=Free+Download");
-
+  response_length = 0;
+  response[0] = '\0';
   strcpy(response, "");
 
   CURLcode result;
@@ -304,25 +321,47 @@ char* get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char
 
   result = curl_easy_perform(curl);
 
-  // Search for link on stderror data
+  // Search for link on http headers
+
+  printf("MP$ UPLOAD REQUEST");
 
   bool iterating = true;
-  char *coincidence = &(response)[0];
+  char *coincidence = response;
   char substring[11] = "location: ";
-  static char download_link[200];
+  static char download_link[2000];
   while (iterating == true)
   {
     char *search = strstr(coincidence, substring);
     if ( search == NULL)
     {
         char* download_link_start = coincidence;
-        char* download_link_end = strstr(coincidence, "\r\n");
-        int url_length = download_link_end - download_link_start;
-        for (int i = 0; i < url_length; i++)
+        printf("EMPIEZP: %s", download_link_start);
+        if (strstr(coincidence, "\r\n") == NULL)
         {
-            download_link[i] = *(download_link_start + i);
+            printf("NOOOOOO");
+            return 1;
         }
-        iterating = false;
+        else
+        {
+        char* download_link_end = strstr(coincidence, "\r\n");
+        if (download_link_end != NULL)
+        {
+            int url_length = download_link_end - download_link_start;
+            printf("\nLONGITUD URL=%i \n", url_length);
+            for (int i = 0; i < url_length; i++)
+            {
+                download_link[i] = *(download_link_start + i);
+            }
+            printf("HOLA");
+            download_link[url_length] = '\0';
+            printf("ADIOS");
+            iterating = false;
+        }
+        else
+        {
+            printf("NOOO LA POLI");
+        }
+        }
     }
     else
     {
@@ -334,29 +373,35 @@ char* get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char
   curl = NULL;
   curl_slist_free_all(slist1);
   slist1 = NULL;
+  printf("NUMERO DE SERVIDORSE %i", avaliable_servers_index);
+  strcpy(avaliable_servers[avaliable_servers_index].download_link, download_link); 
 
-  strcpy(avaliable_servers[avaliable_servers_number].download_link, download_link); 
+    printf("\n DOWNLOAD LINK: %s \n", download_link);
 
-  return &download_link[0];
+  return 0;
 }
 
 int get_download_links(int avaliable_servers_index)
 {
-    if (avaliable_servers[avaliable_servers_index].name == "PDrain")
+    printf("INICIADO GET DOWNLOAD LINKS");
+    if (strcmp(avaliable_servers[avaliable_servers_index].name, "PDrain") == 0)
     {
+        printf("PDRAIN");
         bool iterating = true;
         char *coincidence = &avaliable_servers[avaliable_servers_index].embedded_link[0];
+        printf("COINCIDENCE: %s", coincidence);
         char substring[2] = "/";
 
-            while (iterating == true)
+        while (iterating == true)
             {
             char *search = strstr(coincidence, substring);
             if ( search == NULL)
             {
                 iterating = false;
-                char final_link[200] = "https://pixeldrain.com/api/file/";
+                char final_link[10000] = "https://pixeldrain.com/api/file/";
                 char* file_id = coincidence + 1;
                 strcat(final_link, file_id);
+                printf("%s", final_link);
                 strcpy(avaliable_servers[avaliable_servers_index].download_link, final_link);
             }
             else
@@ -366,8 +411,9 @@ int get_download_links(int avaliable_servers_index)
 
         } 
     }
-    else if (avaliable_servers[avaliable_servers_index].name == "MP4Upload")
+    else if (strcmp(avaliable_servers[avaliable_servers_index].name, "MP4Upload") == 0)
     {
+        printf("MP4UPLOAD \n");
         // Request to generate cookies
         CURLcode result;
         CURL *curl;
@@ -381,30 +427,32 @@ int get_download_links(int avaliable_servers_index)
         curl_easy_setopt(curl, CURLOPT_COOKIEJAR, "/home/donar/.anime/.cookies.txt");
         curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
         curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_body);
     
         result = curl_easy_perform(curl);
 
         curl_easy_cleanup(curl);
         curl = NULL;
 
+        printf("\n COOKIES GENERATED \n");
+
         bool iterating = true;
-        char *coincidence = &avaliable_servers[avaliable_servers_index].embedded_link[0];
-        char substring[2] = "/";
+        char *coincidence = avaliable_servers[avaliable_servers_index].embedded_link;
+
+        
 
         while (iterating == true)
         {
-            char *search = strstr(coincidence, substring);
+            char *search = strstr(coincidence, "/");
             if ( search == NULL)
-            {
+            {   
                 iterating = false;
-                char* file_id = coincidence + 1;
-                char download_link[300];
-                strcpy(download_link, get_mp4upload_download_link("/home/donar/.anime", avaliable_servers[avaliable_servers_index].embedded_link, file_id, avaliable_servers_index));
-                strcpy(avaliable_servers[avaliable_servers_index].download_link, download_link);
+                char* file_id = coincidence;
+                get_mp4upload_download_link("/home/donar/.anime/.cookies.txt", avaliable_servers[avaliable_servers_index].embedded_link, file_id, avaliable_servers_index);
             }
             else
             {
-                coincidence = search + strlen(substring);
+                coincidence = search + strlen("/");
             }
         }
         
@@ -420,7 +468,7 @@ int save_last_episode(char *last_episodes_file, char slug[], char episode_number
     long last_episodes_file_size = ftell(fptr);
     rewind(fptr);
 
-    char *last_episode_string = malloc(last_episodes_file_size + 1 * sizeof(char));
+    char *last_episode_string = malloc((last_episodes_file_size + 1) * sizeof(char));
 
     fread(last_episode_string, sizeof(char), last_episodes_file_size, fptr);
     last_episode_string[last_episodes_file_size] = '\0';
@@ -485,11 +533,47 @@ int save_last_episode(char *last_episodes_file, char slug[], char episode_number
     return 0;
 }
 
-int mpv_playback(char download_dir[], char file_link[])
+char* read_last_episode(char last_episodes_file[], char slug[])
 {
-    char cookies_file_flag[1000] = "--cookies-file=";
-    strcat(cookies_file_flag, download_dir);
-    strcat(cookies_file_flag, "/.cookies.txt' ");
+    FILE *fptr;
+    fptr = fopen(last_episodes_file, "r");
+    fseek(fptr, 0, SEEK_END);
+    long last_episodes_file_size = ftell(fptr);
+    rewind(fptr);
+
+    char *last_episodes_string = malloc((last_episodes_file_size + 1) * sizeof(char));
+    fread(last_episodes_string, sizeof(char), last_episodes_file_size, fptr);
+    last_episodes_string[last_episodes_file_size] = '\0';
+
+    fclose(fptr);
+
+    char* slug_start_position = strstr(&last_episodes_string[0], slug);
+    char* slug_end_position = strstr(slug_start_position, "\n");
+
+    char* episode_number_start_position = strstr(slug_start_position + strlen(slug), " ") + 1;
+
+    char* episode_number = NULL;
+    int episode_number_length = slug_end_position - episode_number_start_position;
+
+    int j = 0;
+
+    for (int i = episode_number_start_position - last_episodes_string; i < (episode_number_start_position - last_episodes_string) + episode_number_length; i++)
+    {
+        episode_number = realloc(episode_number, (j + 1) * sizeof(char));
+        episode_number[j] = *(last_episodes_string + i);
+        j += 1;
+    }
+
+    episode_number = realloc(episode_number, (j + 1) * sizeof(char));
+    episode_number[j] = '\0';
+
+    free(last_episodes_string);
+    printf("NUMERO DE EPISODIO: %s", episode_number);
+    return episode_number;
+}
+
+int mpv_mp4upload_playback(char cookies_file_flag[], char file_link[])
+{
     char reproduce_command[1000] = "mpv --really-quiet --tls-verify=no --http-header-fields='Referer: https://www.mp4upload.com/' ";
     strcat(reproduce_command, cookies_file_flag);
     strcat(reproduce_command, file_link);
@@ -499,6 +583,12 @@ int mpv_playback(char download_dir[], char file_link[])
 
 int main()
 {
-    save_last_episode("/home/donar/.anime/.last_episodes", "golden-kamuy", "3");
+    search("vinland saga");
+    int selected_anime_index = 0;
+    char *total_episodes_number = get_episodes(avaliable_animes[selected_anime_index].slug);
+    char selected_episode[] = "1";
+    get_episode_link(avaliable_animes[selected_anime_index].slug, selected_episode);
+    get_download_links(0);
+    mpv_mp4upload_playback(" --cookies-file=/home/donar/.anime/.cookies.txt ", avaliable_servers[0].download_link);
     return 0;
 }
