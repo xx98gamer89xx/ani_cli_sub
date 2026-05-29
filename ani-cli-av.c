@@ -1,18 +1,19 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ncurses.h>
 #include <curl/curl.h>
 #include "cJSON.h"
 
 struct anime_data
 {
-    char slug[40];
-    char id[10];
+    char slug[1000];
+    char last_episode[10];
 };
 
 struct server_data
 {
-    char name[20];
+    char name[100];
     char embedded_link[2000];
     char download_link[2000];
 };
@@ -20,6 +21,8 @@ struct server_data
 char response[10000000] = "";
 struct anime_data *avaliable_animes = NULL;
 struct server_data *avaliable_servers = NULL;
+int avaliable_animes_count = 0;
+int avaliable_servers_index = 0;
 
 size_t callback(void *ptr, size_t size, size_t nmemb, void *userdata)
 {
@@ -55,7 +58,7 @@ size_t header_callback(void *buffer, size_t size, size_t nitems, void *userdata)
     return total;
 }
 
-void parse_array(cJSON *array)
+void parse_search(cJSON *array)
 {
   cJSON *slug;
   cJSON *id;
@@ -63,18 +66,33 @@ void parse_array(cJSON *array)
   int i = 0;
   while (item)
   {
+        bool saved = false;
         slug = cJSON_GetObjectItem(item, "slug");
-        id = cJSON_GetObjectItem(item, "id");
         item=item->next;
-        avaliable_animes = realloc(avaliable_animes, (i + 1) * sizeof(struct anime_data));
-        strcpy(avaliable_animes[i].slug, slug->valuestring);
-        strcpy(avaliable_animes[i].id, id->valuestring);
-        printf("\n ID: %s \n SLUG: %s", avaliable_animes[i].id, avaliable_animes[i].slug);
+        for (int i = 0; i < avaliable_animes_count; i++)
+        {
+            if (strcmp(avaliable_animes[i].slug, slug->valuestring) == 0)
+            {
+                saved = true;
+                break;
+            }
+            else
+            {
+                saved = false;
+            }
+        }
+        if (saved != true)
+        {
+            avaliable_animes_count += 1;
+            avaliable_animes = realloc(avaliable_animes, avaliable_animes_count * sizeof(struct anime_data));
+            strcpy(avaliable_animes[i].slug, slug->valuestring);
+            strcpy(avaliable_animes[i].last_episode, "1");
+        }
         i++;
   }
 }
 
-char* search(char search[])
+char* search_animes(char search[])
 {
     response_length = 0;
     response[0] = '\0';
@@ -115,11 +133,11 @@ char* search(char search[])
 
     printf("%s", response);
     cJSON *json_response = cJSON_Parse(response);
-    parse_array(json_response);
+    parse_search(json_response);
     cJSON_Delete(json_response);
 }
 
-char* get_episodes(char slug[])
+char* get_episodes(char slug[], int *max_episodes)
 {
   response_length = 0;
   response[0] = '\0';
@@ -171,16 +189,20 @@ char* get_episodes(char slug[])
     episodes_number[i] = *(episode_string_back + i);
   }
   printf("%s", episodes_number);
-  return episodes_number;
+  *max_episodes = atoi(episodes_number);
+  return 0;
 }
 
-int parse_episode_servers_and_links(int orientation, char* episode_dub_position, char* episode_sub_position, int substring_length, char* server)
+int parse_episode_servers_and_links(int orientation, char* episode_dub_position, char* episode_sub_position, char* server)
 {
     printf("\n PARSEADOR \n");
     char* last_sub_dub_position;
-    int avaliable_servers_number = 0;
     if (orientation > 0)
     {
+        if (episode_dub_position == NULL)
+        {
+            episode_dub_position = strstr(server, "server:\"") + strlen(strstr(server, "server:\""));
+        }
         last_sub_dub_position = episode_dub_position;
     }
     else
@@ -194,6 +216,7 @@ int parse_episode_servers_and_links(int orientation, char* episode_dub_position,
         char *search = strstr(server, "server:\"");
         if ( search == NULL || last_sub_dub_position - search < 0)
         {
+            printf("SEARCH: %s", search);
             iterating = false;
         }
         else
@@ -207,10 +230,14 @@ int parse_episode_servers_and_links(int orientation, char* episode_dub_position,
             server_name[server_characters_number] = '\0';
             if (strcmp(server_name, "PDrain") == 0 || strcmp(server_name, "MP4Upload") == 0)
             {
-                avaliable_servers_number += 1;
-                avaliable_servers = realloc(avaliable_servers, avaliable_servers_number * sizeof(struct server_data));
-                printf("NOMBRE DEL SERVIDOR: %s \n", server_name);
-                strcpy(avaliable_servers[avaliable_servers_number - 1].name, server_name);
+                avaliable_servers_index += 1;
+                struct server_data *temp = realloc(avaliable_servers, avaliable_servers_index * sizeof(struct server_data));
+                if (temp != NULL)
+                {
+                    avaliable_servers = temp;
+                }
+                printf("\n NOMBRE DEL SERVIDOR: %s \n", server_name);
+                strcpy(avaliable_servers[avaliable_servers_index - 1].name, server_name);
                 char *url_start = strstr(search, "url:\"");
                 char *url_end = strstr(url_start + strlen("url:\""), "\"");
                 int url_lenght = url_end - (url_start + strlen("url:\""));
@@ -220,8 +247,8 @@ int parse_episode_servers_and_links(int orientation, char* episode_dub_position,
                     episode_link[i] = *(url_start + strlen("url:\"") + i);
                 }
                 episode_link[url_lenght] = '\0';
-                printf("LINK DE EPISODIO: %i", url_lenght);
-                strcpy(avaliable_servers[avaliable_servers_number - 1].embedded_link, episode_link);
+                printf("\n LINK DE EPISODIO: %s\n", episode_link);
+                strcpy(avaliable_servers[avaliable_servers_index - 1].embedded_link, episode_link);
             }
             server = search + strlen("server:\"");
         }
@@ -229,13 +256,14 @@ int parse_episode_servers_and_links(int orientation, char* episode_dub_position,
     return 0;   
 }
 
+
 int get_episode_link(char slug[], char episode_number[])
 {
     response_length = 0;
     response[0] = '\0';
     strcpy(response, "");
 
-    char episode_page_link[100] = "https://animeav1.com/media/";
+    char episode_page_link[1000] = "https://animeav1.com/media/";
     strcat(episode_page_link, slug);
     strcat(episode_page_link, "/");
     strcat(episode_page_link, episode_number);
@@ -278,17 +306,27 @@ int get_episode_link(char slug[], char episode_number[])
     char* episode_sub_position = strstr(coincidence, "SUB");
     char* episode_dub_position = strstr(coincidence, "DUB");
 
-    int orientation = episode_dub_position - episode_sub_position;
-    
+    int orientation;
+    if (episode_dub_position != NULL)
+    {
+        orientation = episode_dub_position - episode_sub_position;
+    }
+    else
+    {
+        orientation = 1;
+    }
 
-    parse_episode_servers_and_links(orientation, episode_dub_position, episode_sub_position, strlen(substring), coincidence);
+    printf("\n SUB: %s \n", episode_sub_position);
+    printf("\n DUB: %s \n", episode_dub_position);
+
+    parse_episode_servers_and_links(orientation, episode_dub_position, episode_sub_position, coincidence);
 }
 
 
 
 int get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char file_id[], int avaliable_servers_index)
 {
-  printf("MP$ UPLOAD REQUEST");
+  printf("MP4 UPLOAD REQUEST");
   char post_data[1000] = "op=download2&id=";
   strcat(post_data, file_id);
   strcat(post_data, "&rand=&referer=https%3A%2F%2Fwww.mp4upload.com%2F&method_free=Free+Download");
@@ -323,7 +361,7 @@ int get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char f
 
   // Search for link on http headers
 
-  printf("MP$ UPLOAD REQUEST");
+  printf("MP4 UPLOAD REQUEST");
 
   bool iterating = true;
   char *coincidence = response;
@@ -335,7 +373,7 @@ int get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char f
     if ( search == NULL)
     {
         char* download_link_start = coincidence;
-        printf("EMPIEZP: %s", download_link_start);
+        printf("EMPIEZO: %s", download_link_start);
         if (strstr(coincidence, "\r\n") == NULL)
         {
             printf("NOOOOOO");
@@ -352,9 +390,8 @@ int get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char f
             {
                 download_link[i] = *(download_link_start + i);
             }
-            printf("HOLA");
             download_link[url_length] = '\0';
-            printf("ADIOS");
+            printf("LINK DE DESCARGA: %s", download_link);
             iterating = false;
         }
         else
@@ -373,7 +410,8 @@ int get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char f
   curl = NULL;
   curl_slist_free_all(slist1);
   slist1 = NULL;
-  printf("NUMERO DE SERVIDORSE %i", avaliable_servers_index);
+  printf("NUMERO DE SERVIDORES %i", avaliable_servers_index);
+  //IMPORTANTE DESCOMENTAR
   strcpy(avaliable_servers[avaliable_servers_index].download_link, download_link); 
 
     printf("\n DOWNLOAD LINK: %s \n", download_link);
@@ -381,78 +419,79 @@ int get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char f
   return 0;
 }
 
-int get_download_links(int avaliable_servers_index)
+int get_download_links()
 {
-    printf("INICIADO GET DOWNLOAD LINKS");
-    if (strcmp(avaliable_servers[avaliable_servers_index].name, "PDrain") == 0)
+    printf("INICIADO GET DOWNLOAD LINKS \n");
+    for (int i = 0; i < avaliable_servers_index; i++)
     {
-        printf("PDRAIN");
-        bool iterating = true;
-        char *coincidence = &avaliable_servers[avaliable_servers_index].embedded_link[0];
-        printf("COINCIDENCE: %s", coincidence);
-        char substring[2] = "/";
-
-        while (iterating == true)
-            {
-            char *search = strstr(coincidence, substring);
-            if ( search == NULL)
-            {
-                iterating = false;
-                char final_link[10000] = "https://pixeldrain.com/api/file/";
-                char* file_id = coincidence + 1;
-                strcat(final_link, file_id);
-                printf("%s", final_link);
-                strcpy(avaliable_servers[avaliable_servers_index].download_link, final_link);
-            }
-            else
-            {
-                coincidence = search + strlen(substring);
-            }
-
-        } 
-    }
-    else if (strcmp(avaliable_servers[avaliable_servers_index].name, "MP4Upload") == 0)
-    {
-        printf("MP4UPLOAD \n");
-        // Request to generate cookies
-        CURLcode result;
-        CURL *curl;
-
-        curl = curl_easy_init();
-        curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 102400L);
-        curl_easy_setopt(curl, CURLOPT_URL, "https://www.mp4upload.com/j70hobym0b7k");
-        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0");
-        curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 50L);
-        curl_easy_setopt(curl, CURLOPT_COOKIEJAR, "/home/donar/.anime/.cookies.txt");
-        curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
-        curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_body);
-    
-        result = curl_easy_perform(curl);
-
-        curl_easy_cleanup(curl);
-        curl = NULL;
-
-        printf("\n COOKIES GENERATED \n");
-
-        bool iterating = true;
-        char *coincidence = avaliable_servers[avaliable_servers_index].embedded_link;
-
-        
-
-        while (iterating == true)
+        if (strcmp(avaliable_servers[i].name, "PDrain") == 0)
         {
-            char *search = strstr(coincidence, "/");
-            if ( search == NULL)
-            {   
-                iterating = false;
-                char* file_id = coincidence;
-                get_mp4upload_download_link("/home/donar/.anime/.cookies.txt", avaliable_servers[avaliable_servers_index].embedded_link, file_id, avaliable_servers_index);
-            }
-            else
+            printf("PDRAIN \n");
+            bool iterating = true;
+            char *coincidence = &avaliable_servers[i].embedded_link[0];
+            printf("COINCIDENCE: %s \n", coincidence);
+            char substring[2] = "/";
+
+            while (iterating == true)
+                {
+                char *search = strstr(coincidence, substring);
+                if ( search == NULL)
+                {
+                    iterating = false;
+                    char final_link[10000] = "https://pixeldrain.com/api/file/";
+                    char* file_id = coincidence + 1;
+                    strcat(final_link, file_id);
+                    printf("%s", final_link);
+                    strcpy(avaliable_servers[i].download_link, final_link);
+                }
+                else
+                {
+                    coincidence = search + strlen(substring);
+                }
+
+            } 
+        }
+        else if (strcmp(avaliable_servers[i].name, "MP4Upload") == 0)
+        {
+            printf("MP4UPLOAD \n");
+            // Request to generate cookies
+            CURLcode result;
+            CURL *curl;
+
+            curl = curl_easy_init();
+            curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 102400L);
+            curl_easy_setopt(curl, CURLOPT_URL, "https://www.mp4upload.com/j70hobym0b7k");
+            curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
+            curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0");
+            curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 50L);
+            curl_easy_setopt(curl, CURLOPT_COOKIEJAR, "/home/donar/.anime/.cookies.txt");
+            curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
+            curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_body);
+        
+            result = curl_easy_perform(curl);
+
+            curl_easy_cleanup(curl);
+            curl = NULL;
+
+            printf("\n COOKIES GENERATED \n");
+
+            bool iterating = true;
+            char *coincidence = avaliable_servers[i].embedded_link;
+
+            while (iterating == true)
             {
-                coincidence = search + strlen("/");
+                char *search = strstr(coincidence, "/");
+                if ( search == NULL)
+                {   
+                    iterating = false;
+                    char* file_id = coincidence;
+                    get_mp4upload_download_link("/home/donar/.anime/.cookies.txt", avaliable_servers[i].embedded_link, file_id, i);
+                }
+                else
+                {
+                    coincidence = search + strlen("/");
+                }
             }
         }
         
@@ -533,7 +572,7 @@ int save_last_episode(char *last_episodes_file, char slug[], char episode_number
     return 0;
 }
 
-char* read_last_episode(char last_episodes_file[], char slug[])
+char* read_last_episode(char last_episodes_file[])
 {
     FILE *fptr;
     fptr = fopen(last_episodes_file, "r");
@@ -547,29 +586,44 @@ char* read_last_episode(char last_episodes_file[], char slug[])
 
     fclose(fptr);
 
-    char* slug_start_position = strstr(&last_episodes_string[0], slug);
-    char* slug_end_position = strstr(slug_start_position, "\n");
+    char* slug_start_position = last_episodes_string;
 
-    char* episode_number_start_position = strstr(slug_start_position + strlen(slug), " ") + 1;
+    char slug[1000];
+    char episode_number[1000];
+    bool iterating = true;
 
-    char* episode_number = NULL;
-    int episode_number_length = slug_end_position - episode_number_start_position;
-
-    int j = 0;
-
-    for (int i = episode_number_start_position - last_episodes_string; i < (episode_number_start_position - last_episodes_string) + episode_number_length; i++)
+    while (iterating == true)
     {
-        episode_number = realloc(episode_number, (j + 1) * sizeof(char));
-        episode_number[j] = *(last_episodes_string + i);
-        j += 1;
+        char* episode_end_position = strstr(slug_start_position, "\n");
+        if (episode_end_position != NULL)
+        {
+            char* episode_number_start_position = strstr(slug_start_position, " ");
+
+            for (int i = 0; i < episode_number_start_position - slug_start_position; i++ )
+            {
+                slug[i] = *(slug_start_position + i);
+            }
+
+            slug[episode_number_start_position - slug_start_position] = '\0';
+            avaliable_animes_count += 1;
+            avaliable_animes = realloc(avaliable_animes, avaliable_animes_count * sizeof(struct anime_data));
+            strcpy(avaliable_animes[avaliable_animes_count - 1].slug, slug);
+
+            for (int i = 0; i < episode_end_position - episode_number_start_position - 1; i++ )
+            {
+                episode_number[i] = *(episode_number_start_position + 1 + i);
+            }
+
+            episode_number[episode_end_position - episode_number_start_position] = '\0';
+            strcpy(avaliable_animes[avaliable_animes_count - 1].last_episode, episode_number);
+
+            slug_start_position = episode_end_position + 1;
+        }
+        else
+        {
+            iterating = false;
+        }
     }
-
-    episode_number = realloc(episode_number, (j + 1) * sizeof(char));
-    episode_number[j] = '\0';
-
-    free(last_episodes_string);
-    printf("NUMERO DE EPISODIO: %s", episode_number);
-    return episode_number;
 }
 
 int mpv_mp4upload_playback(char cookies_file_flag[], char file_link[])
@@ -581,14 +635,235 @@ int mpv_mp4upload_playback(char cookies_file_flag[], char file_link[])
     return 0;
 }
 
+int mpv_pdrain_playback(char file_link[])
+{
+    char reproduce_command[100] ="mpv --really-quiet ";
+    strcat(reproduce_command, file_link);
+    system(reproduce_command);
+    return 0;
+}
+
+int check_pdrain_link(char download_link[])
+{
+    response_length = 0;
+    response[0] = '\0';
+    strcpy(response, "");
+  CURLcode result;
+  CURL *curl;
+
+  curl = curl_easy_init();
+  curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 102400L);
+  curl_easy_setopt(curl, CURLOPT_URL, "https://pixeldrain.com/api/file/uoiQc1hB");
+  curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, "curl/8.20.0");
+  curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 50L);
+  curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
+  curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, callback);
+
+
+  result = curl_easy_perform(curl);
+
+  curl_easy_cleanup(curl);
+  curl = NULL;
+
+  char *response_start = strstr(response, "success\":");
+  char *first_f = strstr(response, "f");
+
+  if (first_f == NULL || (response_start + strlen("success\":")) - first_f == 1 )
+  {
+    return 1;
+  } 
+  else
+  {
+    return 0;
+  }
+}
+
+int manage_enter(int *selection, char*** options, char *mode, int *max_selection, int* selected_anime, WINDOW *screen)
+{
+    if (*mode == 'a')
+    {
+        *selected_anime = *selection;
+
+        int max_episodes;
+        get_episodes(avaliable_animes[*selection].slug, &max_episodes);
+
+        if (max_episodes > atoi(avaliable_animes[*selection].last_episode) + 20)
+        {
+            max_episodes = atoi(avaliable_animes[*selection].last_episode) + 20;
+        }
+
+        for (int i = 0; i < max_episodes; i++)
+        {
+            char episode_number[10];
+            sprintf(episode_number, "%i", atoi(avaliable_animes[*selection].last_episode) + i);
+            *options = realloc(*options, (i + 1) * sizeof(char*));
+            (*options)[i] = strdup(episode_number);
+        }
+        *selection = 0;
+        *max_selection = max_episodes - 1;
+        *mode = 'e';
+    }
+    else if ( *mode == 'e')
+    {
+        int selected_episode;
+        selected_episode = atoi(*options[0]) + *selection;
+        char selected_episode_string[10];
+        sprintf(selected_episode_string, "%i", selected_episode);
+        get_episode_link(avaliable_animes[*selected_anime].slug, selected_episode_string);
+        get_download_links();
+        for (int i = 0; i < avaliable_servers_index; i++)
+        {
+            printw("\nNOMBRE: %s LINK: %s", avaliable_servers[i].name,avaliable_servers[i].download_link);
+            if (strcmp(avaliable_servers[i].name, "PDrain") == 0)
+            {
+                int link_status = check_pdrain_link(avaliable_servers[i].download_link);
+                printw("LINK_STATUS: %i", link_status);
+                refresh();
+                if (link_status == 1)
+                {
+                    printw("FAILED PDRAIN");
+                    continue;
+                }
+                else
+                {
+                    printw("REPRODUCING PDRAIN");
+                    mpv_pdrain_playback(avaliable_servers[i].download_link);
+                }
+            }
+            else if (strcmp(avaliable_servers[i].name, "MP4Upload") == 0)
+            {
+                printw("REPRODUCING MP4UPLOAD: %s", avaliable_servers[i].download_link);
+                mpv_mp4upload_playback(" --cookies-file=/home/donar/.anime/.cookies.txt ", avaliable_servers[i].download_link);
+            }
+        }
+    }
+    return 0;
+}
+
+int manage_arrow_keys(int input, int* selection, int max_selection)
+{   
+    if (input == KEY_UP)
+    {
+        if (*selection > 0)
+        {
+            *selection -=  1;
+        }
+    }
+    else if (input == KEY_DOWN)
+    {
+        if (*selection < max_selection)
+        {
+            *selection += 1;
+        }
+    }
+    return 0;
+}
+
+int draw_menu_options(char **options, int selection, WINDOW *menu, int max_selection)
+{
+    wclear(menu);
+    for (int i = 0; i < max_selection + 1; i++)
+    {
+        if (i == selection)
+        {
+            wattron(menu, COLOR_PAIR(1));
+            wprintw(menu, "%i. %s\n", i + 1, options[i]);
+            wattroff(menu, COLOR_PAIR(1));
+        }
+        else
+        {
+             wprintw(menu, "%i. %s\n", i + 1, options[i]);
+        }
+    }
+    refresh();
+    wrefresh(menu);
+    refresh();
+}
+
+int menu_logic()
+{
+    initscr();
+    cbreak();
+    noecho();
+    start_color();
+    keypad(stdscr, true);
+    curs_set(0);
+
+    init_pair(1, COLOR_GREEN, COLOR_BLACK);
+
+    int maxy = getmaxy(stdscr);
+    int maxx = getmaxx(stdscr);
+    int startx;
+    int starty;
+    int width = maxx;
+    int height = maxy - 2;
+    starty = (maxy - (maxy - 2));
+    startx = 0;
+
+    WINDOW* search = newwin(1, maxx, 0, 0);
+    wprintw(search, "Search: ");
+    WINDOW* menu = newwin(maxy - 1, maxx, 1, 0);
+    keypad(menu, true);
+    keypad(search, true);
+    
+    read_last_episode("/home/donar/.anime/.last_episodes");
+    int selection = 0;
+    int max_selection = avaliable_animes_count - 1;
+    int selected_anime;
+    char** options = NULL;
+
+    for (int i = 0; i < avaliable_animes_count; i++)
+    {
+        options = realloc(options, ((i + 1) * sizeof(char*)));
+        options[i] = avaliable_animes[i].slug;
+    }
+
+    draw_menu_options(options, selection, menu, max_selection);
+
+    refresh();
+    wrefresh(search);
+    wrefresh(menu);
+    refresh();
+
+    bool menu_running = true;
+    char mode = 'a'; // A de anime E de episodes S de seach y F de final
+    while (menu_running == true)
+    {
+        int input = getch();
+        switch (input)
+        {
+            case KEY_UP:
+                manage_arrow_keys(input, &selection, max_selection);
+            break; 
+            case KEY_DOWN:
+                manage_arrow_keys(input, &selection, max_selection);
+            break;
+            case '\n':
+                manage_enter(&selection, &options, &mode, &max_selection, &selected_anime, search);
+            break;  
+            case 'q':
+                return 0;
+            break;
+        }
+        draw_menu_options(options, selection, menu, max_selection);
+    }
+
+    for (int i = 0; i < max_selection + 1; i++) 
+    {
+        if (options[i] != avaliable_animes[i].slug && options[i] != NULL) 
+        {
+            free(options[i]);
+        }
+    }
+    free(options);
+    delwin(search);
+    endwin();
+    return 0;
+}
+
 int main()
 {
-    search("vinland saga");
-    int selected_anime_index = 0;
-    char *total_episodes_number = get_episodes(avaliable_animes[selected_anime_index].slug);
-    char selected_episode[] = "1";
-    get_episode_link(avaliable_animes[selected_anime_index].slug, selected_episode);
-    get_download_links(0);
-    mpv_mp4upload_playback(" --cookies-file=/home/donar/.anime/.cookies.txt ", avaliable_servers[0].download_link);
-    return 0;
+    menu_logic();
 }
