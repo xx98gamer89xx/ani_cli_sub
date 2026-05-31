@@ -4,6 +4,7 @@
 #include <ncurses.h>
 #include <curl/curl.h>
 #include "cJSON.h"
+#include <ctype.h>
 
 struct anime_data
 {
@@ -23,6 +24,7 @@ struct anime_data *avaliable_animes = NULL;
 struct server_data *avaliable_servers = NULL;
 int avaliable_animes_count = 0;
 int avaliable_servers_index = 0;
+int search_chars_count = 0;
 
 size_t callback(void *ptr, size_t size, size_t nmemb, void *userdata)
 {
@@ -64,30 +66,16 @@ void parse_search(cJSON *array)
   cJSON *id;
   cJSON *item = array ? array->child : 0;
   int i = 0;
+  avaliable_animes_count = 0;
   while (item)
   {
         bool saved = false;
         slug = cJSON_GetObjectItem(item, "slug");
         item=item->next;
-        for (int i = 0; i < avaliable_animes_count; i++)
-        {
-            if (strcmp(avaliable_animes[i].slug, slug->valuestring) == 0)
-            {
-                saved = true;
-                break;
-            }
-            else
-            {
-                saved = false;
-            }
-        }
-        if (saved != true)
-        {
-            avaliable_animes_count += 1;
-            avaliable_animes = realloc(avaliable_animes, avaliable_animes_count * sizeof(struct anime_data));
-            strcpy(avaliable_animes[i].slug, slug->valuestring);
-            strcpy(avaliable_animes[i].last_episode, "1");
-        }
+        avaliable_animes_count += 1;
+        avaliable_animes = realloc(avaliable_animes, avaliable_animes_count * sizeof(struct anime_data));
+        strcpy(avaliable_animes[i].slug, slug->valuestring);
+        strcpy(avaliable_animes[i].last_episode, "1");
         i++;
   }
 }
@@ -808,41 +796,77 @@ int menu_selected_episode_playback(char*** options, int selected_episode, int se
     **max_selection = 2;
 }
 
-int manage_enter(int *selection, char*** options, char *mode, int *max_selection, int* selected_anime, WINDOW *search,WINDOW *menu, int *selected_episode)
+int manage_enter(int *selection, char*** options, char *mode, int *max_selection, int* selected_anime, WINDOW *search,WINDOW *menu, int *selected_episode, char** search_string)
 {
     if (*mode == 'a')
     {
-        *selected_anime = *selection;
-
-        int max_episodes;
-        get_episodes(avaliable_animes[*selection].slug, &max_episodes);
-
-        if (max_episodes > atoi(avaliable_animes[*selection].last_episode) + 20)
+        if (search_chars_count <= 0)
         {
-            max_episodes = atoi(avaliable_animes[*selection].last_episode) + 20;
-        }
+            *selected_anime = *selection;
 
-        for (int i = 0; i < *max_selection + 1; i++)
-        {
-            free((*options)[i]);
-        }
-        free(*options);
-        *options = NULL;
+            int max_episodes;
+            get_episodes(avaliable_animes[*selection].slug, &max_episodes);
 
-        for (int i = 0; i < max_episodes; i++)
-        {
-            char episode_number[10];
-            sprintf(episode_number, "%i", atoi(avaliable_animes[*selection].last_episode) + i);
-            *options = realloc(*options, (i + 1) * sizeof(char*));
-            (*options)[i] = strdup(episode_number);
+            if (max_episodes > atoi(avaliable_animes[*selection].last_episode) + 20)
+            {
+                max_episodes = atoi(avaliable_animes[*selection].last_episode) + 20;
+            }
+
+            for (int i = 0; i < *max_selection + 1; i++)
+            {
+                free((*options)[i]);
+            }
+            free(*options);
+            *options = NULL;
+
+            for (int i = 0; i < max_episodes; i++)
+            {
+                char episode_number[10];
+                sprintf(episode_number, "%i", atoi(avaliable_animes[*selection].last_episode) + i);
+                *options = realloc(*options, (i + 1) * sizeof(char*));
+                (*options)[i] = strdup(episode_number);
+            }
+            *selection = 0;
+            *max_selection = max_episodes - 1;
+            *mode = 'e';
         }
-        *selection = 0;
-        *max_selection = max_episodes - 1;
-        *mode = 'e';
+        else
+        {
+            search_animes(*search_string + 1);
+            free(*search_string);
+            *search_string = NULL;
+            search_chars_count = 0;
+
+            for (int i = 0; i < *max_selection + 1; i++)
+            {
+                free((*options)[i]);
+            }
+            free(*options);
+            *options = NULL;
+
+            for (int i = 0; i < avaliable_animes_count; i++)
+            {
+                *options = realloc(*options, (i + 1) * sizeof(char*));
+                (*options)[i] = strdup(avaliable_animes[i].slug);
+            }
+            *selection = 0;
+            *max_selection = avaliable_animes_count - 1;
+            *mode = 'a';
+        }
     }
     else if ( *mode == 'e')
     {
-        *selected_episode = atoi(*options[0]) + *selection;
+        if (search_chars_count == 0)
+        {
+            *selected_episode = atoi(*options[0]) + *selection;
+        }
+        else
+        {
+            *selected_episode = atoi(*search_string + 1);
+            free(*search_string);
+            *search_string = NULL;
+            search_chars_count = 0;
+        }
         printw("PLAYBACK CALLED FROM MODE E");
         *mode = 'f';
         menu_selected_episode_playback(options, *selected_episode, *selected_anime, &selection, &max_selection, &mode);
@@ -902,6 +926,47 @@ int manage_arrow_keys(int input, int* selection, int max_selection)
     return 0;
 }
 
+int manage_text(int input, char** search_string, WINDOW* search)
+{
+    if (isalpha(input) || input == ' ' || isdigit(input))
+    {
+        search_chars_count += 1;
+        char *temp = realloc(*search_string, (search_chars_count + 1) * sizeof(char*));
+        if (temp != NULL)
+        {
+            *search_string = temp;
+        }
+        (*search_string)[search_chars_count] = input;
+        (*search_string)[search_chars_count + 1] = '\0';
+    }
+    else if (input == KEY_BACKSPACE)
+    {
+        if (search_chars_count > 0)
+        {
+            char* temp = realloc(*search_string, search_chars_count * sizeof(char*));
+            if (temp != NULL)
+            {
+                printf("TEMPNO ES NULL");
+                *search_string = temp;
+            }
+            (*search_string)[search_chars_count] = '\0';
+            search_chars_count -= 1;
+        }
+    }
+    wclear(search);
+    if (*search_string != NULL)
+    {
+        wprintw(search, "Search:%s", *search_string);
+    }
+    else
+    {
+        wprintw(search, "Search:");
+    }
+    wrefresh(search);
+    refresh();
+    return 0;
+}
+
 int draw_menu_options(char **options, int selection, WINDOW *menu, int max_selection)
 {
     wclear(menu);
@@ -954,6 +1019,8 @@ int menu_logic()
     int max_selection = avaliable_animes_count - 1;
     int selected_anime;
     int selected_episode;
+    char* search_string = NULL;
+
     char** options = NULL;
 
     for (int i = 0; i < avaliable_animes_count; i++)
@@ -983,10 +1050,13 @@ int menu_logic()
                 manage_arrow_keys(input, &selection, max_selection);
             break;
             case '\n':
-                manage_enter(&selection, &options, &mode, &max_selection, &selected_anime, search, menu, &selected_episode);
+                manage_enter(&selection, &options, &mode, &max_selection, &selected_anime, search, menu, &selected_episode, &search_string);
             break;  
-            case 'q':
-                return 0;
+            case KEY_BACKSPACE:
+                manage_text(input, &search_string, search);
+            break;
+            default:
+                manage_text(input, &search_string, search);
             break;
         }
         draw_menu_options(options, selection, menu, max_selection);
