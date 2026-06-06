@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <ncurses.h>
 #include <curl/curl.h>
 #include "cJSON.h"
@@ -64,6 +65,39 @@ size_t header_callback(void *buffer, size_t size, size_t nitems, void *userdata)
     response[response_length] = '\0';
 
     return total;
+}
+
+void startup_checks()
+{
+    // MPV CHECK
+    if (system("mpv --version") != 0)
+    {
+        printf("MPV is not found, install it and add it to your path");
+    }
+    // FILE CREATIONS
+    char dir_name[1000];
+    snprintf(dir_name, sizeof(dir_name), "%s/.anime", home);
+    struct stat statbuf;
+    printf("Last episodes path: %s", last_episodes_path);
+
+    if (stat(dir_name, &statbuf) == 0) {
+        printf("Directory already exists.\n");
+    } else {
+        if (mkdir(dir_name, 0755) == 0) {
+            printf("Directory created successfully.\n");
+        } else {
+            printf("Error creating directory");
+        }
+    }
+
+    FILE *flast_episodes;
+    flast_episodes = fopen(last_episodes_path, "w");
+
+    fclose(flast_episodes);
+
+    FILE *fcookies;
+    fcookies = fopen(cookies_file_path, "w");
+    fclose(fcookies);
 }
 
 void parse_search(cJSON *array)
@@ -575,7 +609,16 @@ int save_last_episode(char *last_episodes_file, char slug[], char episode_number
         fclose(fptr);
     }
     // ADD SLUG TO BEGGINING OF FILE
-    char last_episode_file[last_episodes_file_size * 2];
+    int last_episode_file_size;
+    if ( last_episodes_file_size != 0)
+    {
+        last_episode_file_size = last_episodes_file_size * 5 * sizeof(char);
+    }
+    else
+    {
+        last_episode_file_size = 50 * sizeof(char);
+    }
+    char* last_episode_file = (char *)malloc(last_episode_file_size * sizeof(char));
     strcpy(last_episode_file, slug);
 
     strcat(last_episode_file, " ");
@@ -589,6 +632,7 @@ int save_last_episode(char *last_episodes_file, char slug[], char episode_number
 
     fclose(fptr);
 
+    free(last_episode_file);
     free(last_episode_string);
 
     return 0;
@@ -1108,5 +1152,6 @@ int main()
          "%s/.anime/.last_episodes",
          home);
 
+    startup_checks();
     menu_logic();
 }
