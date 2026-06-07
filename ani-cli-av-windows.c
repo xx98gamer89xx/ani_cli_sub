@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-#include <pdcurses.h>
+#include <pdcursescurses.h>
 #include <curl/curl.h>
 #include "cjson/cJSON.h"
 #include <ctype.h>
@@ -87,7 +87,7 @@ void startup_checks()
     if (stat(dir_name, &statbuf) == 0) {
         printf("Directory already exists.\n");
     } else {
-        if (mkdir(dir_name, 0755) == 0) {
+        if (mkdir(dir_name) == 0) {
             printf("Directory created successfully.\n");
         } else {
             printf("Error creating directory");
@@ -690,28 +690,36 @@ int read_last_episode(char last_episodes_file[])
                 struct anime_data *temp = realloc(avaliable_animes, avaliable_animes_count * sizeof(struct anime_data));
                 if (temp == NULL)
                 {
-                    printw("FALLO DE REALLOC");
+                    fprintf(stderr, "FALLO DE REALLOC");
                     free(last_episodes_string);
                     return 1;
                 }
                 avaliable_animes = temp;
                 strcpy(avaliable_animes[avaliable_animes_count - 1].slug, slug);
-                printw("ANIME: %s", slug);
+                fprintf(stderr, "ANIME: %s", slug);
                 for (int i = 0; i < episode_end_position - episode_number_start_position; i++ )
                 {
-                    printw("EP: %c", i);
+                    fprintf(stderr, "EP: %c", i);
                     episode_number[i] = *(episode_number_start_position + 1 + i);
                 }
 
                 episode_number[episode_end_position - episode_number_start_position] = '\0';
                 strcpy(avaliable_animes[avaliable_animes_count - 1].last_episode, episode_number);
-                printw("\nULTIMO EPISODIO DE %s: %s\n", avaliable_animes[avaliable_animes_count - 1].slug, episode_number);
+                fprintf(stderr, "\nULTIMO EPISODIO DE %s: %s\n", avaliable_animes[avaliable_animes_count - 1].slug, episode_number);
 
                 slug_start_position = episode_end_position + 1;
+            }
+            else
+            {
+                fprintf(stderr, "SALIENDO DE READ");
+                iterating = false;
+                free(last_episodes_string);
+                return 0;
             }
         }
         else
         {
+            fprintf(stderr, "SALIENDO DE READ");
             iterating = false;
             free(last_episodes_string);
             return 0;
@@ -885,9 +893,11 @@ int manage_enter(int *selection, char*** options, char *mode, int *max_selection
             int max_episodes;
             get_episodes(avaliable_animes[*selection].slug, &max_episodes);
 
+            fprintf(stderr, "MAX_EPISODES: %i", max_episodes);
             if (max_episodes > atoi(avaliable_animes[*selection].last_episode) + 20)
             {
                 max_episodes = atoi(avaliable_animes[*selection].last_episode) + 20;
+                fprintf(stderr, "MAX_EPISODES cambiados a: %i", max_episodes);
             }
 
             for (int i = 0; i < *max_selection + 1; i++)
@@ -897,15 +907,16 @@ int manage_enter(int *selection, char*** options, char *mode, int *max_selection
             free(*options);
             *options = NULL;
 
-            for (int i = 0; i < max_episodes; i++)
+            for (int i = 0; i + atoi(avaliable_animes[*selection].last_episode) <= max_episodes; i++)
             {
                 char episode_number[10];
                 sprintf(episode_number, "%i", atoi(avaliable_animes[*selection].last_episode) + i);
                 *options = realloc(*options, (i + 1) * sizeof(char*));
                 (*options)[i] = strdup(episode_number);
             }
+
             *selection = 0;
-            *max_selection = max_episodes - 1;
+            *max_selection = (max_episodes) - atoi(avaliable_animes[*selection].last_episode);
             *mode = 'e';
         }
         else
@@ -1059,7 +1070,8 @@ int draw_menu_options(char **options, int selection, WINDOW *menu, int max_selec
         }
         else
         {
-             wprintw(menu, "%i. %s\n", i + 1, options[i]);
+            fprintf(stderr, "NUMERO DE OPCION: %i", i);
+            wprintw(menu, "%i. %s\n", i + 1, options[i]);
         }
     }
     refresh();
@@ -1075,6 +1087,11 @@ int menu_logic()
     start_color();
     keypad(stdscr, true);
     curs_set(0);
+    if (stdscr == NULL)
+{
+    fprintf(stderr, "initscr failed\n");
+    exit(1);
+}
 
     init_pair(1, COLOR_GREEN, COLOR_BLACK);
 
@@ -1092,7 +1109,6 @@ int menu_logic()
     WINDOW* menu = newwin(maxy - 1, maxx, 1, 0);
     keypad(menu, true);
     keypad(search, true);
-    
     read_last_episode(last_episodes_path);
     int selection = 0;
     int max_selection = avaliable_animes_count - 1;
@@ -1116,7 +1132,7 @@ int menu_logic()
     refresh();
 
     bool menu_running = true;
-    char mode = 'a'; // A de anime E de episodes S de seach y F de final
+    char mode = 'a'; // A de anime E de episodes y F de final
     while (menu_running == true)
     {
         int input = getch();
@@ -1164,6 +1180,6 @@ int main()
          home);
 
     #endif
-    startup_checks();
+    //startup_checks();
     menu_logic();
 }
