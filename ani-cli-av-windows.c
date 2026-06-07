@@ -921,7 +921,7 @@ int manage_enter(int *selection, char*** options, char *mode, int *max_selection
         }
         else
         {
-            search_animes(*search_string + 1);
+            search_animes(*search_string);
             free(*search_string);
             *search_string = NULL;
             search_chars_count = 0;
@@ -951,7 +951,7 @@ int manage_enter(int *selection, char*** options, char *mode, int *max_selection
         }
         else
         {
-            *selected_episode = atoi(*search_string + 1);
+            *selected_episode = atoi(*search_string);
             free(*search_string);
             *search_string = NULL;
             search_chars_count = 0;
@@ -1019,7 +1019,6 @@ int manage_text(int input, char** search_string, WINDOW* search)
 {
     if (isalpha(input) || input == ' ' || isdigit(input))
     {
-        search_chars_count += 1;
         char *temp = realloc(*search_string, (search_chars_count + 1) * sizeof(char*));
         if (temp != NULL)
         {
@@ -1027,6 +1026,7 @@ int manage_text(int input, char** search_string, WINDOW* search)
         }
         (*search_string)[search_chars_count] = input;
         (*search_string)[search_chars_count + 1] = '\0';
+        search_chars_count += 1;
     }
     else if (input == KEY_BACKSPACE)
     {
@@ -1038,8 +1038,8 @@ int manage_text(int input, char** search_string, WINDOW* search)
                 printf("TEMPNO ES NULL");
                 *search_string = temp;
             }
-            (*search_string)[search_chars_count] = '\0';
             search_chars_count -= 1;
+            (*search_string)[search_chars_count] = '\0';
         }
     }
     wclear(search);
