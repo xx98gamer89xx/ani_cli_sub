@@ -1028,7 +1028,7 @@ int manage_text(int input, char** search_string, WINDOW* search)
         (*search_string)[search_chars_count + 1] = '\0';
         search_chars_count += 1;
     }
-    else if (input == KEY_BACKSPACE)
+    else if (input == KEY_BACKSPACE || input == '\b' || input == 8 || input == 127)
     {
         if (search_chars_count > 0)
         {
@@ -1147,9 +1147,6 @@ int menu_logic()
             case '\n':
                 manage_enter(&selection, &options, &mode, &max_selection, &selected_anime, search, menu, &selected_episode, &search_string);
             break;  
-            case KEY_BACKSPACE:
-                manage_text(input, &search_string, search);
-            break;
             default:
                 manage_text(input, &search_string, search);
             break;
