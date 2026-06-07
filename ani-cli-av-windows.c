@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-#include <pdcursescurses.h>
+#include <pdcurses.h>
 #include <curl/curl.h>
 #include "cjson/cJSON.h"
 #include <ctype.h>
