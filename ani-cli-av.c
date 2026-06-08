@@ -95,12 +95,12 @@ void startup_checks()
     }
 
     FILE *flast_episodes;
-    flast_episodes = fopen(last_episodes_path, "wb");
+    flast_episodes = fopen(last_episodes_path, "a");
 
     fclose(flast_episodes);
 
     FILE *fcookies;
-    fcookies = fopen(cookies_file_path, "wb");
+    fcookies = fopen(cookies_file_path, "a");
     fclose(fcookies);
 }
 
@@ -561,7 +561,7 @@ int get_download_links()
 int save_last_episode(char *last_episodes_file, char slug[], char episode_number[])
 {
     FILE *fptr;
-    fptr = fopen(last_episodes_file, "rb");
+    fptr = fopen(last_episodes_file, "r");
     fseek(fptr, 0, SEEK_END);
 
     long last_episodes_file_size = ftell(fptr);
@@ -630,7 +630,7 @@ int save_last_episode(char *last_episodes_file, char slug[], char episode_number
     strcat(last_episode_file, "\n");
     strcat(last_episode_file, last_episode_string);
     printf("ARCHIVO DE ULTOMOS EPISODIOS: %s", last_episode_file);
-    fptr = fopen(last_episodes_file, "wb");
+    fptr = fopen(last_episodes_file, "w");
 
     fprintf(fptr, "%s", last_episode_file);
 
@@ -645,7 +645,7 @@ int save_last_episode(char *last_episodes_file, char slug[], char episode_number
 int read_last_episode(char last_episodes_file[])
 {
     FILE *fptr;
-    fptr = fopen(last_episodes_file, "rb");
+    fptr = fopen(last_episodes_file, "r");
     if (fptr == NULL)
     {
         printw("LAST EPISODES NOT FOUND");
