@@ -8,7 +8,7 @@
     #include "cjson/CJson.h"
     #include "pdcurses.h"
 #else
-    #include "CJson.h"
+    #include "cJSON.h"
     #include "ncurses.h"
 #endif
 
