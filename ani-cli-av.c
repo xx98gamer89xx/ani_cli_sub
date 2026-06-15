@@ -2,10 +2,15 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-#include <ncurses.h>
 #include <curl/curl.h>
-#include "cJSON.h"
 #include <ctype.h>
+#ifdef _WIN32
+    #include "cjson/CJson.h"
+    #include "pdcurses.h"
+#else
+    #include "CJson.h"
+    #include "ncurses.h"
+#endif
 
 char *home;
 char last_episodes_path[1024];
@@ -87,11 +92,19 @@ void startup_checks()
     if (stat(dir_name, &statbuf) == 0) {
         printf("Directory already exists.\n");
     } else {
-        if (mkdir(dir_name, 0755) == 0) {
-            printf("Directory created successfully.\n");
-        } else {
-            printf("Error creating directory");
-        }
+        #ifdef _WIN32
+            if (mkdir(dir_name) == 0) {
+                printf("Directory created successfully.\n");
+            } else {
+                printf("Error creating directory");
+            }
+        #else
+            if (mkdir(dir_name, 0755) == 0) {
+                printf("Directory created successfully.\n");
+            } else {
+                printf("Error creating directory");
+            }
+        #endif
     }
 
     FILE *flast_episodes;
