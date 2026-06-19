@@ -130,7 +130,13 @@ void parse_search(cJSON *array)
         slug = cJSON_GetObjectItem(item, "slug");
         item=item->next;
         avaliable_animes_count += 1;
-        avaliable_animes = realloc(avaliable_animes, avaliable_animes_count * sizeof(struct anime_data));
+        void *tmp_realloc_0 = realloc(avaliable_animes, avaliable_animes_count * sizeof(struct anime_data));
+        if (tmp_realloc_0 == NULL)
+        {
+            fprintf(stderr, "Out of memory\n");
+            return;
+        }
+        avaliable_animes = tmp_realloc_0;
         strcpy(avaliable_animes[i].slug, slug->valuestring);
         strcpy(avaliable_animes[i].last_episode, "1");
         i++;
@@ -1133,7 +1139,13 @@ int menu_logic()
 
     for (int i = 0; i < avaliable_animes_count; i++)
     {
-        options = realloc(options, ((i + 1) * sizeof(char*)));
+        void *tmp_realloc_1 = realloc(options, ((i + 1) * sizeof(char*)));
+        if (tmp_realloc_1 == NULL)
+        {
+            fprintf(stderr, "Out of memory\n");
+            return;
+        }
+        options = tmp_realloc_1;
         options[i] = strdup(avaliable_animes[i].slug);
     }
 
