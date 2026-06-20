@@ -57,7 +57,7 @@ size_t download_callback(void *ptr, size_t size, size_t nmemb, FILE *stream) {
 static int progress_callback(void *clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow)
 {   
     static int count = 0;
-    count = (count + 1) % 10;
+    count = (count + 1) % 20;
     if (count == 0)
     {
         double dl_percentage = 100 * ((double)dlnow / ((double)1024 * (double)1024)) / ((double)dltotal / ((double)1024 * (double)1024));
@@ -864,7 +864,7 @@ int download_episode(char* url, char* slug, char* episode_number)
     }
     else
     {
-        sprintf(filepath, "%s_%s_%s.mp4", slug, episode_number, "DUB");
+        sprintf(filepath, "%s/.anime/%s_%s_%s.mp4", slug, episode_number, "DUB");
     }
     if (strstr(url, "pixeldrain.com") != NULL)
     {
@@ -1393,7 +1393,7 @@ int menu_logic()
     return 0;
 }
 
-int main()
+int main(int argc, char* argv[])
 {
     #ifdef _WIN32
         home = getenv("USERPROFILE");
@@ -1414,6 +1414,63 @@ int main()
          home);
 
     #endif
+    if (argc > 1)
+    {
+        for (int i = 1; i < argc; i++)
+        {
+            if (strcmp(argv[i], "-d") == 0)
+            {
+                download = 1;
+            }
+            else if (strcmp(argv[i], "-D") == 0)
+            {
+                dubbed = 1;
+            }
+            else if (strcmp(argv[i], "-h") == 0)
+            {
+                printf("Opciones: \n -h Muestra este mensaje \n -D Activa el modo dub, para ver versiones dobladas (es posible que no haya version doblada, por defecto está desactivado) \n -d Activa el modo descargar (no stremea, guarda el archivo en %s/.anime, por defecto está desactivado)", home);
+                exit(0);
+            }
+        }
+    }
+    else
+    {
+        char* config_file_path;
+        snprintf(config_file_path, strlen(home) + 19,"%s/.anime/config.txt", home);
+        FILE* config_file;
+        config_file = fopen(config_file_path, "r");
+        
+        if (config_file != NULL)
+        {
+            fseek(config_file, 0, SEEK_END);
+
+            long config_file_size = ftell(config_file);
+            rewind(config_file);
+
+            char *config_file_string = malloc((config_file_size + 1) * sizeof(char));
+
+            fread(config_file_string, sizeof(char), config_file_size, config_file);
+            config_file_string[config_file_size] = '\0';
+
+            fclose(config_file);
+
+            fprintf(stderr, "%s", config_file_string);
+
+            if (strstr(config_file_string, "dubbed") != NULL)
+            {
+                dubbed = 1;
+            }
+            if (strstr(config_file_string, "download") != NULL)
+            {
+                download = 1;
+            }
+        }
+        else
+        {
+            config_file = fopen(config_file_path, "a");
+            fclose(config_file);
+        }
+    }
     startup_checks();
     menu_logic();
 }
