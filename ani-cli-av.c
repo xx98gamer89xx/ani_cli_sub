@@ -6,7 +6,7 @@
 #include <ctype.h>
 #ifdef _WIN32
     #include "cjson/CJson.h"
-    #include "pdcurses.h"
+    #include "curses.h"
 #else
     #include "cJSON.h"
     #include "ncurses.h"
@@ -830,7 +830,11 @@ int reset_logic(int *selection, char *mode, int *selected_anime, int *selected_e
     for (int i = 0; i < avaliable_animes_count; i++)
     {
         *options = realloc(*options, ((i + 1) * sizeof(char*)));
-        (*options)[i] = strdup(avaliable_animes[i].slug);
+        #ifdef _WIN32
+            (*options)[i] = _strdup(avaliable_animes[i].slug);
+        #else
+            (*options)[i] = strdup(avaliable_animes[i].slug);
+        #endif
     }
 
     return 0;
@@ -1055,9 +1059,15 @@ int menu_selected_episode_playback(char*** options, int selected_episode, int se
     *options = NULL;
     *options = realloc(*options, 3 * sizeof(char*));
 
-    (*options)[0] = strdup("Continuar viendo");
-    (*options)[1] = strdup("Volver a inicio");
-    (*options)[2] = strdup("Salir");
+    #ifdef _WIN32
+        (*options)[0] = _strdup("Continuar viendo");
+        (*options)[1] = _strdup("Volver a inicio");
+        (*options)[2] = _strdup("Salir");
+    #else
+        (*options)[0] = strdup("Continuar viendo");
+        (*options)[1] = strdup("Volver a inicio");
+        (*options)[2] = strdup("Salir");
+    #endif
 
     **selection = 0;
     **max_selection = 2;
@@ -1094,7 +1104,11 @@ int manage_enter(int *selection, char*** options, char *mode, int *max_selection
                 char episode_number[10];
                 sprintf(episode_number, "%i", atoi(avaliable_animes[*selection].last_episode) + i);
                 *options = realloc(*options, (i + 1) * sizeof(char*));
-                (*options)[i] = strdup(episode_number);
+                #ifdef _WIN32
+                    (*options)[i] = _strdup(episode_number);
+                #else
+                    (*options)[i] = strdup(episode_number);
+                #endif
             }
 
             fprintf(stderr, "MAXIMOS EPISODIOS: %i / ULTIMOS EPISODIOS: %i", max_episodes, atoi(avaliable_animes[*selection].last_episode));
@@ -1119,7 +1133,11 @@ int manage_enter(int *selection, char*** options, char *mode, int *max_selection
             for (int i = 0; i < avaliable_animes_count; i++)
             {
                 *options = realloc(*options, (i + 1) * sizeof(char*));
-                (*options)[i] = strdup(avaliable_animes[i].slug);
+                #ifdef _WIN32
+                    (*options)[i] = _strdup(avaliable_animes[i].slug);
+                #else
+                    (*options)[i] = strdup(avaliable_animes[i].slug);
+                #endif
             }
             *selection = 0;
             *max_selection = avaliable_animes_count - 1;
@@ -1356,7 +1374,11 @@ int menu_logic()
     for (int i = 0; i < avaliable_animes_count; i++)
     {
         options = realloc(options, ((i + 1) * sizeof(char*)));
-        options[i] = strdup(avaliable_animes[i].slug);
+        #ifdef _WIN32
+            options[i] = _strdup(avaliable_animes[i].slug);
+        #else
+            options[i] = strdup(avaliable_animes[i].slug);
+        #endif
     }
 
     draw_menu_options(options, selection, menu, max_selection);
