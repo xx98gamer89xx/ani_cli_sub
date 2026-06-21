@@ -7,6 +7,7 @@
 #ifdef _WIN32
     #include "cjson/CJson.h"
     #include "curses.h"
+    #include "stdbool.h"
 #else
     #include "cJSON.h"
     #include "ncurses.h"
@@ -501,7 +502,7 @@ int get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char f
 
   bool iterating = true;
   char *coincidence = response;
-  char substring[11] = "location: ";
+  char substring[11] = "Location: ";
   static char download_link[2000];
   while (iterating == true)
   {
@@ -868,7 +869,7 @@ int download_episode(char* url, char* slug, char* episode_number)
     }
     else
     {
-        sprintf(filepath, "%s/.anime/%s_%s_%s.mp4", slug, episode_number, "DUB");
+        sprintf(filepath, "%s/.anime/%s_%s_%s.mp4", home, slug, episode_number, "DUB");
     }
     if (strstr(url, "pixeldrain.com") != NULL)
     {
