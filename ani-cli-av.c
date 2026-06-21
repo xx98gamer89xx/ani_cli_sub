@@ -502,7 +502,12 @@ int get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char f
 
   bool iterating = true;
   char *coincidence = response;
-  char substring[11] = "Location: ";
+  char substring[11];
+  #ifdef _WIN32
+    strcpy(substring, "Location: ");
+  #else
+    strcpy(substring, "location: ");
+  #endif
   static char download_link[2000];
   while (iterating == true)
   {
