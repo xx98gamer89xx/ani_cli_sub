@@ -2,15 +2,16 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-#include <curl/curl.h>
 #include <ctype.h>
 #ifdef _WIN32
-    #include "cjson/CJson.h"
-    #include "curses.h"
+    #include <curl/curl.h>
+    #include "cJSON.h"
+    #include "ncursesw/curses.h"
     #include "stdbool.h"
 #else
     #include "cJSON.h"
     #include "ncurses.h"
+    #include <curl/curl.h>
 #endif
 
 char *home;
@@ -22,6 +23,7 @@ char cookies_file_path[1024];
 struct anime_data
 {
     char slug[1000];
+    int max_episode;
     char last_episode[10];
 };
 
@@ -32,7 +34,7 @@ struct server_data
     char download_link[2000];
 };
 
-char response[10000000] = "";
+char* response;
 struct anime_data *avaliable_animes = NULL;
 struct server_data *avaliable_servers = NULL;
 int avaliable_animes_count = 0;
@@ -41,10 +43,29 @@ int search_chars_count = 0;
 int dubbed = 0;
 int download = 0;
 
-size_t callback(void *ptr, size_t size, size_t nmemb, void *userdata)
+struct MemoryStruct {
+  char *memory;
+  size_t size;
+};
+ 
+static size_t callback(char *contents, size_t size, size_t nmemb, void *userp)
 {
-    strncat(response, ptr, size * nmemb);
-    return size * nmemb;
+  size_t realsize = size * nmemb;
+  struct MemoryStruct *mem = (struct MemoryStruct *)userp;
+ 
+  char *ptr = realloc(mem->memory, mem->size + realsize + 1);
+  if(!ptr) {
+    /* out of memory! */
+    fprintf(stderr, "Fallo de memoria\n");
+    return 0;
+  }
+ 
+  mem->memory = ptr;
+  memcpy(&(mem->memory[mem->size]), contents, realsize);
+  mem->size += realsize;
+  mem->memory[mem->size] = 0;
+ 
+  return realsize;
 }
 
 size_t download_callback(void *ptr, size_t size, size_t nmemb, FILE *stream) {
@@ -76,22 +97,26 @@ static size_t discard_body(void *ptr,
 
 static int response_length = 0;
 
-size_t header_callback(void *buffer, size_t size, size_t nitems, void *userdata)
+static size_t header_callback(void *buffer, size_t size, size_t nitems, void *userdata)
 {
-    size_t total = size * nitems;
+    size_t realsize = size * nitems;
+    struct MemoryStruct *mem = (struct MemoryStruct *)userdata;
 
-    if (response_length + total >= sizeof(response) - 1)
+    char *ptr = realloc(mem->memory, mem->size + realsize + 1);
+    if (ptr == NULL)
     {
-        fprintf(stderr, "Header buffer overflow\n");
-        return 0;
+        fprintf(stderr, "Fallo de memoria\n");
+        return 0; // Hace que libcurl aborte la transferencia
     }
 
-    memcpy(response + response_length, buffer, total);
+    mem->memory = ptr;
 
-    response_length += total;
-    response[response_length] = '\0';
+    memcpy(mem->memory + mem->size, buffer, realsize);
 
-    return total;
+    mem->size += realsize;
+    mem->memory[mem->size] = '\0';
+
+    return realsize;
 }
 
 void startup_checks()
@@ -156,9 +181,11 @@ void parse_search(cJSON *array)
 
 char* search_animes(char search[])
 {
+    struct MemoryStruct response_data;
+    response_data.memory = malloc(1);
+    response_data.size = 0;  
     response_length = 0;
-    response[0] = '\0';
-    strcpy(response, "");
+    
     CURLcode result;
     CURL *curl;
     struct curl_slist *slist1;
@@ -185,8 +212,13 @@ char* search_animes(char search[])
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "POST");
     curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response_data);
     result = curl_easy_perform(curl);
 
+    response = realloc(response, response_data.size + 1);
+    memcpy(response, response_data.memory, response_data.size);
+    *(response + response_data.size) = '\0';
+    response_length = response_data.size;
 
 
     curl_easy_cleanup(curl);
@@ -196,63 +228,80 @@ char* search_animes(char search[])
     cJSON *json_response = cJSON_Parse(response);
     parse_search(json_response);
     cJSON_Delete(json_response);
+    free(response_data.memory);
+    free(response);
 }
 
 char* get_episodes(char slug[], int *max_episodes)
 {
-  response_length = 0;
-  response[0] = '\0';
-  strcpy(response, "");
-  
-  CURLcode result;
-  CURL *curl;
+    struct MemoryStruct response_data;
+    response_data.memory = malloc(1);
+    response_data.size = 0;  
 
-  char anime_url[100] = "https://animeav1.com/media/";
-  strcat(anime_url, slug);
+    response_length = 0;
+    response = NULL;
+    
+    CURLcode result;
+    CURL *curl;
 
-  curl = curl_easy_init();
-  curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 102400L);
-  curl_easy_setopt(curl, CURLOPT_URL, anime_url);
-  curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
-  curl_easy_setopt(curl, CURLOPT_USERAGENT, "curl/8.20.0");
-  curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 50L);
-  curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
-  curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, callback);
-  curl_easy_setopt(curl, CURLOPT_VERBOSE, 0);
+    char anime_url[100] = "https://animeav1.com/media/";
+    strcat(anime_url, slug);
+    strcat(anime_url, "/1");
 
-  result = curl_easy_perform(curl);
+    curl = curl_easy_init();
+    curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 102400L);
+    curl_easy_setopt(curl, CURLOPT_URL, anime_url);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "curl/8.20.0");
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 50L);
+    curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
+    curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response_data);
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 0);
 
-  curl_easy_cleanup(curl);
-  curl = NULL;
+    result = curl_easy_perform(curl);
 
-  bool iterating = true;
-  char *coincidence = &response[0];
-  char substring[100] = "href=\"/media/";
-  strcat(substring, slug);
+    curl_easy_cleanup(curl);
+    curl = NULL;
 
-  while (iterating == true)
-  {
-    char *search = strstr(coincidence, substring);
-    if ( search == NULL)
+    response = realloc(response, response_data.size + 1);
+    memcpy(response, response_data.memory, response_data.size);
+    *(response + response_data.size) = '\0';
+    response_length = response_data.size;
+
+    bool iterating = true;
+    char *coincidence = &response[0];
+    char substring[100] = "number:";
+    char episode_list_end_substring[100] = ",relations:";
+    char* episode_list_end = strstr(coincidence, episode_list_end_substring);
+    int i = 0;
+    while (iterating == true)
     {
-        iterating = false;
+        char *search = strstr(coincidence, substring);
+        if (search == NULL || search >= episode_list_end)
+        {
+            iterating = false;
+        }
+        else
+        {
+            coincidence = search + strlen(substring);
+        }
+        i+=1;
     }
-    else
+    char *episode_string_back = coincidence;
+    char *episode_string_front = strstr(episode_string_back, "}");
+    int episodes_number_digits = episode_string_front - episode_string_back;
+    static char episodes_number[100];
+    for (int i = 0; i < episodes_number_digits; i++)
     {
-        coincidence = search + strlen(substring);
+        episodes_number[i] = *(episode_string_back + i);
     }
-  }
-  char *episode_string_back = coincidence + 1;
-  char *episode_string_front = strstr(episode_string_back, "\"");
-  int episodes_number_digits = episode_string_front - episode_string_back;
-  static char episodes_number[100];
-  for (int i = 0; i < episodes_number_digits; i++)
-  {
-    episodes_number[i] = *(episode_string_back + i);
-  }
-  *max_episodes = atoi(episodes_number);
-  return 0;
+    episodes_number[episodes_number_digits] = '\0';
+    *max_episodes = atoi(episodes_number);
+    free(response_data.memory);
+    free(response);
+    return 0;
 }
 
 int parse_episode_servers_and_links(int orientation, char* episode_dub_position, char* episode_sub_position, char* server, char* mode)
@@ -373,9 +422,11 @@ int parse_episode_servers_and_links(int orientation, char* episode_dub_position,
 
 int get_episode_link(char slug[], char episode_number[], char* mode)
 {
+    struct MemoryStruct response_data;
+    response_data.memory = malloc(1);
+    response_data.size = 0;  
+
     response_length = 0;
-    response[0] = '\0';
-    strcpy(response, "");
 
     char episode_page_link[1000] = "https://animeav1.com/media/";
     strcat(episode_page_link, slug);
@@ -394,6 +445,7 @@ int get_episode_link(char slug[], char episode_number[], char* mode)
   curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
   curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, callback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response_data);
   curl_easy_setopt(curl, CURLOPT_VERBOSE, 0);
 
 
@@ -401,6 +453,12 @@ int get_episode_link(char slug[], char episode_number[], char* mode)
 
   curl_easy_cleanup(curl);
   curl = NULL;
+
+    response = NULL;
+    response = realloc(response, response_data.size + 1);
+    memcpy(response, response_data.memory, response_data.size);
+    *(response + response_data.size) = '\0';
+    response_length = response_data.size;
 
   bool iterating = true;
   char *coincidence = &response[0];
@@ -434,10 +492,14 @@ int get_episode_link(char slug[], char episode_number[], char* mode)
 
     if (parse_episode_servers_and_links(orientation, episode_dub_position, episode_sub_position, coincidence, mode) == 1)
     {
+        free(response);
+        free(response_data.memory);
         return 1;
     }
     else 
     {
+        free(response);
+        free(response_data.memory);
         return 0;
     }
 }
@@ -446,12 +508,13 @@ int get_episode_link(char slug[], char episode_number[], char* mode)
 
 int get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char file_id[], int avaliable_servers_index)
 {
+    struct MemoryStruct header_data;
+    header_data.memory = malloc(1);
+    header_data.size = 0;
+
   char post_data[1000] = "op=download2&id=";
   strcat(post_data, file_id);
   strcat(post_data, "&rand=&referer=https%3A%2F%2Fwww.mp4upload.com%2F&method_free=Free+Download");
-  response_length = 0;
-  response[0] = '\0';
-  strcpy(response, "");
 
   CURLcode result;
   CURL *curl;
@@ -475,15 +538,20 @@ int get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char f
   curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discard_body);
   curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_callback);
+  curl_easy_setopt(curl, CURLOPT_HEADERDATA, &header_data);
   curl_easy_setopt(curl, CURLOPT_VERBOSE, 0);
 
 
   result = curl_easy_perform(curl);
 
+    char* headers = malloc(header_data.size + 1);
+    memcpy(headers, header_data.memory, header_data.size);
+    *(headers + header_data.size) = '\0';
+
   // Search for link on http headers
 
   bool iterating = true;
-  char *coincidence = response;
+  char *coincidence = headers;
   char substring[11];
   #ifdef _WIN32
     strcpy(substring, "Location: ");
@@ -500,6 +568,8 @@ int get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char f
         if (strstr(coincidence, "\r\n") == NULL)
         {
             fprintf(stderr, "Fallo en la búsqueda del inicio del link de descarga");
+            free(headers);
+            free(header_data.memory);
             return 1;
         }
         else
@@ -532,7 +602,8 @@ int get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char f
   curl_slist_free_all(slist1);
   slist1 = NULL;
   strcpy(avaliable_servers[avaliable_servers_index].download_link, download_link); 
-
+    free(headers);
+    free(header_data.memory);
   return 0;
 }
 
@@ -811,6 +882,7 @@ int mpv_mp4upload_playback(char cookies_file_flag[], char file_link[])
     char reproduce_command[1000];
     snprintf(reproduce_command, sizeof(reproduce_command), "mpv --really-quiet --tls-verify=no --http-header-fields=\"Referer: https://www.mp4upload.com/\"%s\"%s\"", cookies_file_flag, file_link);
     system(reproduce_command);
+    refresh();
     return 0;
 }
 
@@ -819,6 +891,7 @@ int mpv_pdrain_playback(char file_link[])
     char reproduce_command[100] ="mpv --really-quiet ";
     strcat(reproduce_command, file_link);
     system(reproduce_command);
+    refresh();
     return 0;
 }
 
@@ -912,9 +985,11 @@ int download_episode(char* url, char* slug, char* episode_number)
 
 int check_pdrain_link(char download_link[])
 {
+    struct MemoryStruct response_data;
+    response_data.memory = malloc(1);
+    response_data.size = 0;  
+
     response_length = 0;
-    response[0] = '\0';
-    strcpy(response, "");
   CURLcode result;
   CURL *curl;
 
@@ -927,6 +1002,7 @@ int check_pdrain_link(char download_link[])
   curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long)CURL_SSLVERSION_TLSv1_2);
   curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, callback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response_data);
   curl_easy_setopt(curl, CURLOPT_VERBOSE, 0);
 
 
@@ -935,15 +1011,24 @@ int check_pdrain_link(char download_link[])
 
   curl_easy_cleanup(curl);
   curl = NULL;
+    response = NULL;
+    response = realloc(response, response_data.size + 1);
+    memcpy(response, response_data.memory, response_data.size);
+    *(response + response_data.size) = '\0';
+    response_length = response_data.size;
 
   char *response_start = strstr(response, "success\":");
   char *first_f = strstr(response, "f");
   if (first_f == NULL || (response_start + strlen("success\":")) - first_f == 0 )
   {
+    free(response);
+    free(response_data.memory);
     return 1;
   } 
   else
   {
+    free(response);
+    free(response_data.memory);
     return 0;
   }
 }
@@ -1027,6 +1112,7 @@ int menu_selected_episode_playback(char*** options, int selected_episode, int se
 
     **selection = 0;
     **max_selection = 2;
+    refresh();
 }
 
 int manage_enter(int *selection, char*** options, char *mode, int *max_selection, int* selected_anime, WINDOW *search,WINDOW *menu, int *selected_episode, int max_episodes, char** search_string)
@@ -1039,7 +1125,7 @@ int manage_enter(int *selection, char*** options, char *mode, int *max_selection
 
             int max_episodes;
             get_episodes(avaliable_animes[*selection].slug, &max_episodes);
-
+            avaliable_animes[*selection].max_episode = max_episodes;
             if (max_episodes > atoi(avaliable_animes[*selection].last_episode) + 20)
             {
                 max_episodes = atoi(avaliable_animes[*selection].last_episode) + 20;
@@ -1119,7 +1205,6 @@ int manage_enter(int *selection, char*** options, char *mode, int *max_selection
             getch();
         }
         *mode = 'f';
-        
         if (episodes_terminated == true || menu_selected_episode_playback(options, *selected_episode, *selected_anime, &selection, &max_selection, &mode) == 1)
         {
             for (int i = 0; i < *max_selection + 1; i++)
@@ -1288,7 +1373,7 @@ int menu_logic()
     curs_set(0);
     if (stdscr == NULL)
     {
-        fprintf(stderr, "initscr falló\n");
+        fprintf(stderr, "Initscr falló\n");
         exit(1);
     }
 
@@ -1348,13 +1433,14 @@ int menu_logic()
                 manage_arrow_keys(input, &selection, max_selection);
             break;
             case '\n':
-                manage_enter(&selection, &options, &mode, &max_selection, &selected_anime, search, menu, &selected_episode, atoi(avaliable_animes[selected_anime].last_episode), &search_string);
+                manage_enter(&selection, &options, &mode, &max_selection, &selected_anime, search, menu, &selected_episode, avaliable_animes[selected_anime].max_episode, &search_string);
             break;  
             default:
                 manage_text(input, &search_string, search);
             break;
         }
         draw_menu_options(options, selection, menu, max_selection);
+
         wrefresh(search);
         wrefresh(menu);
     }
