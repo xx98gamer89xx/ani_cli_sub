@@ -900,7 +900,7 @@ int download_episode(char* url, char* slug, char* episode_number)
     CURL *curl;
     FILE *fp;
     CURLcode res;
-    char filepath[strlen(home) + 8 + strlen(slug) + 1 + strlen(episode_number) + 1 + 3 + 4 + 1];
+    char* filepath = malloc(strlen(home) + 8 + strlen(slug) + 1 + strlen(episode_number) + 1 + 3 + 4 + 1);
     if ( dubbed == 0)
     {
         sprintf(filepath, "%s/.anime/%s_%s_%s.mp4", home, slug, episode_number, "SUB");
@@ -927,6 +927,7 @@ int download_episode(char* url, char* slug, char* episode_number)
             curl_easy_cleanup(curl);
             fclose(fp);
         }
+        free(filepath);
         return 0;
     }
     else
