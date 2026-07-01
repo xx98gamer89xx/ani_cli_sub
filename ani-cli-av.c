@@ -5,8 +5,8 @@
 #include <ctype.h>
 #ifdef _WIN32
     #include <curl/curl.h>
-    #include "cJSON.h"
-    #include "ncursesw/curses.h"
+    #include "cjson/cJSON.h"
+    #include "curses.h"
     #include "stdbool.h"
 #else
     #include "cJSON.h"
@@ -1396,7 +1396,7 @@ int menu_logic()
     read_last_episode(last_episodes_path);
     int selection = 0;
     int max_selection = avaliable_animes_count - 1;
-    int selected_anime;
+    int selected_anime = 0;
     int selected_episode;
     char* search_string = NULL;
 
@@ -1489,7 +1489,7 @@ int main(int argc, char* argv[])
     }
     else
     {
-        char* config_file_path;
+        char* config_file_path = malloc(strlen(home) + strlen("/.anime/config.txt") + 1);
         snprintf(config_file_path, strlen(home) + 19,"%s/.anime/config.txt", home);
         FILE* config_file;
         config_file = fopen(config_file_path, "r");
@@ -1522,6 +1522,7 @@ int main(int argc, char* argv[])
             config_file = fopen(config_file_path, "a");
             fclose(config_file);
         }
+        free(config_file_path);
     }
     startup_checks();
     menu_logic();
