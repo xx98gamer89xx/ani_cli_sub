@@ -4,10 +4,11 @@
 #include <sys/stat.h>
 #include <ctype.h>
 #ifdef _WIN32
-    #include <curl/curl.h>
-    #include "cjson/cJSON.h"
-    #include "curses.h"
+    #define CURL_STATICLIB
+    #include "windows_libs/cJSON-1.7.19/cJSON.h"
+    #include "windows_libs/PDCurses-3.9/curses.h"
     #include "stdbool.h"
+    #include "windows_libs/curl-8.21.0_7-win64-mingw/include/curl/curl.h"
 #else
     #include "cJSON.h"
     #include "ncurses.h"
@@ -553,11 +554,9 @@ int get_mp4upload_download_link(char cookies_jar[], char embedded_link[], char f
   bool iterating = true;
   char *coincidence = headers;
   char substring[11];
-  #ifdef _WIN32
-    strcpy(substring, "Location: ");
-  #else
-    strcpy(substring, "location: ");
-  #endif
+
+  strcpy(substring, "location: ");
+
   static char download_link[2000];
   while (iterating == true)
   {
